@@ -47,9 +47,11 @@ test('dashboard reports measured impact without invented token-savings estimates
   const dashboard = await startDashboard(0, env);
   t.after(() => dashboard.server.close());
   const html = await fetch(dashboard.url).then((r) => r.text());
-  assert.match(html, /Measured context retention/);
-  assert.match(html, /Retained tool-history reduction/);
-  assert.match(html, /no inferred Codex billing savings/i);
+  assert.match(html, /O que aconteceu em cada tentativa/);
+  assert.match(html, /Por ferramenta/);
+  assert.match(html, /não.*tokens.*Codex/i);
+  assert.match(html, /Removido.*decisão normal, não um erro/s);
+  assert.match(html, /color-scheme:dark/);
   assert.doesNotMatch(html, /estimated tokens saved/i);
   const api = await fetch(`${dashboard.url}api/stats`).then((r) => r.json());
   assert.equal(api.transcriptCharsRemoved, 12000);
