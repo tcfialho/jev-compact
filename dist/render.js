@@ -37,7 +37,21 @@ function render(messages, resultHead, resultTail) {
 export function capContext(text, limit) {
     if (limit <= 0 || text.length <= limit)
         return text;
-    const marker = `\n\n[… ${text.length - limit} chars omitted from middle; full retained context is on disk …]\n\n`;
+    const markerFor = (omitted) => `
+
+[… ${omitted} chars omitted from middle; full retained context is on disk …]
+
+`;
+    let marker = markerFor(Math.max(0, text.length - limit));
+    for (let i = 0; i < 3; i++) {
+        const usable = Math.max(0, limit - marker.length);
+        const next = markerFor(Math.max(0, text.length - usable));
+        if (next.length === marker.length) {
+            marker = next;
+            break;
+        }
+        marker = next;
+    }
     const usable = Math.max(0, limit - marker.length);
     const head = Math.floor(usable * 0.2);
     return text.slice(0, head) + marker + text.slice(-(usable - head));

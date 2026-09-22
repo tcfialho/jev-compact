@@ -1,5 +1,5 @@
 {
-  "name": "codex-jev-compact",
+  "name": "jev-compact",
   "version": "0.2.0",
   "description": "Fast Jev-guided verbatim context compaction for Codex with TypeSafe and OpenRouter support.",
   "type": "module",
@@ -8,7 +8,7 @@
     "node": ">=20"
   },
   "bin": {
-    "codex-jev-compact": "dist/cli.js"
+    "jev-compact": "dist/cli.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -26,7 +26,8 @@
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "build": "npm run clean && tsc -p tsconfig.json",
     "test": "npm run build && node --test tests/*.test.mjs",
-    "check": "npm run test"
+    "check": "npm run test",
+    "prepare": "npm run build"
   },
   "devDependencies": {
     "typescript": "^5.8.3"

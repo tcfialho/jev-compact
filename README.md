@@ -1,4 +1,4 @@
-# codex-jev-compact
+# jev-compact
 
 Jev-guided **verbatim context retention around Codex compaction**. It evaluates completed tool calls/results at `PreCompact`, lets Codex perform its native compaction, confirms success at `PostCompact`, and restores the selected evidence once through `SessionStart(source=compact)`.
 
@@ -30,13 +30,13 @@ So hook mode preserves exact evidence that a summary may lose. It is not claimin
 - Codex-aware `replacement_history` replay and bounded reverse rollout loading;
 - preserves `developer`, `system`, user and assistant text in Jev-visible state;
 - understands `tool_search_output.tools` and plaintext inter-agent communication;
-- fail-open behavior for legacy rollback and encrypted agent context that cannot be judged correctly;
+- fail-open behavior for legacy rollback, encrypted agent context, and image/audio history that a text-only Jev judgment cannot evaluate correctly;
 - Jev Noul questions directly measure loss from DROP and TRUNCATE;
 - conservative decision precedence matching the base engines: KEEP full result first, then TRUNCATE, then DROP;
 - bounded Jev concurrency, timeout, retry/backoff, `Retry-After`, and measured provider token usage;
 - TypeSafe direct **or OpenRouter Decisions API**;
 - environment or key-file credentials;
-- exact `.context.txt` archive plus structured `.messages.json` sidecar;
+- exact `.context.txt` archive plus structured `.messages.json` sidecar; pending sidecars are invalidated at every new `PreCompact` so a failed/skipped attempt cannot be restored later;
 - `PostCompact` readiness + atomic one-shot restore;
 - stale sidecar cleanup;
 - per-tool savings/decision metrics and optional dashboard;
@@ -45,12 +45,14 @@ So hook mode preserves exact evidence that a summary may lose. It is not claimin
 
 ## Install
 
+The repository keeps `dist/` committed, so a cloned/released copy can install hooks immediately:
+
 ```bash
-npm install
-npm run build
 export TYPESAFE_API_KEY="..."
 node dist/cli.js install
 ```
+
+For development, `npm install` runs the TypeScript build automatically through the package `prepare` script.
 
 Then open `/hooks` once in Codex to review/trust the installed hooks.
 
@@ -60,7 +62,7 @@ Until this project has a real published Git repository, direct installation is c
 
 ```bash
 export OPENROUTER_API_KEY="..."
-export CODEX_JEV_PROVIDER=openrouter
+export JEV_COMPACT_PROVIDER=openrouter
 node dist/cli.js install
 ```
 
@@ -69,8 +71,8 @@ node dist/cli.js install
 Useful when Codex is launched from an environment that does not inherit shell variables:
 
 ```bash
-export CODEX_JEV_PROVIDER=typesafe
-export CODEX_JEV_KEY_FILE="$HOME/.config/codex-jev-compact/typesafe_api_key"
+export JEV_COMPACT_PROVIDER=typesafe
+export JEV_COMPACT_KEY_FILE="$HOME/.config/jev-compact/typesafe_api_key"
 ```
 
 Provider-specific alternatives are `TYPESAFE_API_KEY_FILE` and `OPENROUTER_API_KEY_FILE`.
@@ -81,13 +83,13 @@ The default is **`full`**, preserving the main behavior of the base projects. It
 
 ```bash
 # base-compatible preservation-first behavior (default)
-export CODEX_JEV_RESTORE_MODE=full
+export JEV_COMPACT_RESTORE_MODE=full
 
 # small index only
-export CODEX_JEV_RESTORE_MODE=index
+export JEV_COMPACT_RESTORE_MODE=index
 
 # index + smaller verbatim excerpt
-export CODEX_JEV_RESTORE_MODE=hybrid
+export JEV_COMPACT_RESTORE_MODE=hybrid
 ```
 
 ## Commands
@@ -106,26 +108,26 @@ node dist/cli.js compact rollout.jsonl \
 
 | Variable | Default |
 |---|---:|
-| `CODEX_JEV_PROVIDER` | `auto` |
-| `CODEX_JEV_KEEP_THRESHOLD` | `0.5` |
-| `CODEX_JEV_PRESERVE_RECENT` | `6` |
-| `CODEX_JEV_MAX_STATE_TOKENS` | `24000` |
-| `CODEX_JEV_MAX_REQUEST_TOKENS` | `30000` |
-| `CODEX_JEV_CONCURRENCY` | `4` |
-| `CODEX_JEV_TRUNCATE_HEAD_CHARS` | `300` |
-| `CODEX_JEV_MIN_REDUCTION` | `0.15` |
-| `CODEX_JEV_RESTORE_MODE` | `full` |
-| `CODEX_JEV_INDEX_CHARS` | `12000` |
-| `CODEX_JEV_CONTEXT_CHARS` | `60000` |
-| `CODEX_JEV_TIMEOUT_MS` | `20000` |
-| `CODEX_JEV_RETRIES` | `1` |
-| `CODEX_JEV_STATE_MAX_AGE_MS` | `172800000` |
+| `JEV_COMPACT_PROVIDER` | `auto` |
+| `JEV_COMPACT_KEEP_THRESHOLD` | `0.5` |
+| `JEV_COMPACT_PRESERVE_RECENT` | `6` |
+| `JEV_COMPACT_MAX_STATE_TOKENS` | `24000` |
+| `JEV_COMPACT_MAX_REQUEST_TOKENS` | `30000` |
+| `JEV_COMPACT_CONCURRENCY` | `4` |
+| `JEV_COMPACT_TRUNCATE_HEAD_CHARS` | `300` |
+| `JEV_COMPACT_MIN_REDUCTION` | `0.15` |
+| `JEV_COMPACT_RESTORE_MODE` | `full` |
+| `JEV_COMPACT_INDEX_CHARS` | `12000` |
+| `JEV_COMPACT_CONTEXT_CHARS` | `60000` |
+| `JEV_COMPACT_TIMEOUT_MS` | `20000` |
+| `JEV_COMPACT_RETRIES` | `1` |
+| `JEV_COMPACT_STATE_MAX_AGE_MS` | `172800000` |
 
-Optional goal override: `CODEX_JEV_GOAL` (legacy-compatible `FAST_JEV_GOAL` is also accepted).
+Optional goal override: `JEV_COMPACT_GOAL`.
 
 Provider overrides: `JEV_MODEL`, `JEV_BASE_URL`, `OPENROUTER_JEV_MODEL`, `OPENROUTER_JEV_URL`, `OPENROUTER_HTTP_REFERER`.
 
-Data directory precedence: `PLUGIN_DATA` -> `CODEX_JEV_DATA_DIR` -> `~/.codex/jev-compact`.
+Data directory precedence: `PLUGIN_DATA` -> `JEV_COMPACT_DATA_DIR` -> `~/.codex/jev-compact`.
 
 ## Development
 

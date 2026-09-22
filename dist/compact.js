@@ -250,7 +250,7 @@ function apply(messages, decisions, head) {
             }
             if (action === 'truncate_result' && r.output.length > head + 120) {
                 touched = true;
-                toolResults.push({ ...r, output: `${head ? `${r.output.slice(0, head)}\n` : ''}[codex-jev-compact omitted ${r.output.length - head} chars; rerun tool if needed]` });
+                toolResults.push({ ...r, output: `${head ? `${r.output.slice(0, head)}\n` : ''}[jev-compact omitted ${r.output.length - head} chars; rerun tool if needed]` });
             }
             else
                 toolResults.push(r);

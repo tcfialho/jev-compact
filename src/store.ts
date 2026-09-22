@@ -36,7 +36,7 @@ export interface HistoryRow {
 }
 
 function safe(value: string): string { return value.replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 180); }
-export function dataDir(env = process.env): string { return env.PLUGIN_DATA ?? env.CODEX_JEV_DATA_DIR ?? join(homedir(), '.codex', 'jev-compact'); }
+export function dataDir(env = process.env): string { return env.PLUGIN_DATA ?? env.JEV_COMPACT_DATA_DIR ?? join(homedir(), '.codex', 'jev-compact'); }
 export function statePath(sessionId: string, env = process.env): string { return join(dataDir(env), 'sessions', `${safe(sessionId)}.json`); }
 export function contextPath(sessionId: string, env = process.env): string { return join(dataDir(env), 'sessions', `${safe(sessionId)}.context.txt`); }
 export function messagesPath(sessionId: string, env = process.env): string { return join(dataDir(env), 'sessions', `${safe(sessionId)}.messages.json`); }
@@ -70,6 +70,10 @@ export async function prepareState(
   if (mp) await atomicWrite(mp, `${JSON.stringify(messages, null, 2)}\n`);
   await atomicWrite(statePath(state.sessionId, env), JSON.stringify(full));
   return full;
+}
+
+export async function discardPendingState(sessionId: string, env = process.env): Promise<void> {
+  try { await rm(statePath(sessionId, env), { force: true }); } catch {}
 }
 
 export async function readState(sessionId: string, env = process.env): Promise<SessionState | undefined> {

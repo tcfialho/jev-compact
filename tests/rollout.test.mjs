@@ -26,20 +26,21 @@ test('replays compacted replacement_history as the live transcript', () => {
 test('structured tool output is preserved when it has no text field', () => {
   const rows = [
     { type: 'response_item', payload: { type: 'function_call', call_id: 'c', name: 'tool', arguments: '{}' } },
-    { type: 'response_item', payload: { type: 'function_call_output', call_id: 'c', output: [{ type: 'input_image', image_url: 'data:...' }] } }
+    { type: 'response_item', payload: { type: 'function_call_output', call_id: 'c', output: [{ type: 'json', value: { branch: 'main', clean: true } }] } }
   ];
   const result = parseCodexRollout(rows.map(JSON.stringify).join('\n'));
-  assert.match(result.flatMap((m) => m.toolResults ?? [])[0].output, /input_image/);
+  assert.match(result.flatMap((m) => m.toolResults ?? [])[0].output, /branch/);
 });
 
 test('legacy compaction keeps user prompts and summary instead of erasing history', () => {
   const rows = [
+    { type: 'response_item', payload: { type: 'message', role: 'developer', content: [{ text: 'developer constraint' }] } },
     { type: 'response_item', payload: { type: 'message', role: 'user', content: [{ text: 'constraint' }] } },
     { type: 'response_item', payload: { type: 'message', role: 'assistant', content: [{ text: 'old work' }] } },
     { type: 'compacted', payload: { message: 'legacy summary' } }
   ];
   const result = parseCodexRollout(rows.map(JSON.stringify).join('\n'));
-  assert.deepEqual(result.map((m) => m.text), ['constraint', 'legacy summary']);
+  assert.deepEqual(result.map((m) => m.text), ['developer constraint', 'constraint', 'legacy summary']);
 });
 
 test('legacy rollback fails open instead of judging the wrong history', () => {
@@ -115,4 +116,35 @@ test('preserves developer and system messages from Codex history', () => {
     ['system', 'System context'],
     ['user', 'Fix login'],
   ]);
+});
+
+test('tail loader handles a giant JSONL record crossing many chunks', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'jev-rollout-giant-'));
+  const path = join(dir, 'rollout.jsonl');
+  const rows = [
+    { type: 'compacted', payload: { window_number: 7, replacement_history: [{ type: 'message', role: 'user', content: [{ type: 'input_text', text: 'live constraint' }] }] } },
+    { type: 'response_item', payload: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: `huge-${'x'.repeat(120_000)}` }] } },
+  ];
+  await writeFile(path, `${rows.map(JSON.stringify).join('\n')}\n`);
+  const messages = await loadCodexRollout(path, 127);
+  assert.equal(messages[0].text, 'live constraint');
+  assert.match(messages[1].text, /^huge-x+/);
+});
+
+test('non-text message content fails open instead of hiding context from Jev', () => {
+  const rows = [{ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_image', image_url: 'data:image/png;base64,abc' }] } }];
+  assert.throws(() => parseCodexRollout(rows.map(JSON.stringify).join('\n')), UnsupportedCodexRolloutError);
+});
+
+test('mixed plaintext and encrypted agent content still fails open', () => {
+  const rows = [{ type: 'response_item', payload: { type: 'agent_message', author: 'a', recipient: 'b', content: [{ type: 'input_text', text: 'visible' }, { type: 'encrypted_content', encrypted_content: 'cipher' }] } }];
+  assert.throws(() => parseCodexRollout(rows.map(JSON.stringify).join('\n')), UnsupportedCodexRolloutError);
+});
+
+test('non-text tool results fail open instead of being semantically judged blind', () => {
+  const rows = [
+    { type: 'response_item', payload: { type: 'function_call', call_id: 'img', name: 'view_image', arguments: '{}' } },
+    { type: 'response_item', payload: { type: 'function_call_output', call_id: 'img', output: [{ type: 'input_image', image_url: 'data:image/png;base64,abc' }] } },
+  ];
+  assert.throws(() => parseCodexRollout(rows.map(JSON.stringify).join('\n')), UnsupportedCodexRolloutError);
 });

@@ -38,22 +38,22 @@ export function resolveApiKey(provider: Exclude<JevProvider, 'auto'>, options: P
     if (env.OPENROUTER_API_KEY) return env.OPENROUTER_API_KEY;
     return readKey([
       env.OPENROUTER_API_KEY_FILE,
-      env.CODEX_JEV_PROVIDER === 'openrouter' ? env.CODEX_JEV_KEY_FILE : undefined,
-      join(homedir(), '.config', 'codex-jev-compact', 'openrouter_api_key'),
+      env.JEV_COMPACT_PROVIDER === 'openrouter' ? env.JEV_COMPACT_KEY_FILE : undefined,
+      join(homedir(), '.config', 'jev-compact', 'openrouter_api_key'),
     ]);
   }
   if (env.TYPESAFE_API_KEY) return env.TYPESAFE_API_KEY;
   return readKey([
     env.TYPESAFE_API_KEY_FILE,
-    env.CODEX_JEV_PROVIDER === 'typesafe' ? env.CODEX_JEV_KEY_FILE : undefined,
-    join(homedir(), '.config', 'codex-jev-compact', 'typesafe_api_key'),
+    env.JEV_COMPACT_PROVIDER === 'typesafe' ? env.JEV_COMPACT_KEY_FILE : undefined,
+    join(homedir(), '.config', 'jev-compact', 'typesafe_api_key'),
     join(homedir(), '.typesafe_key'),
   ]);
 }
 
 export function resolveProvider(options: Pick<JevClientOptions, 'provider' | 'env' | 'apiKey'> = {}): Exclude<JevProvider, 'auto'> {
   const env = options.env ?? process.env;
-  const requested = options.provider ?? (env.CODEX_JEV_PROVIDER as JevProvider | undefined) ?? 'auto';
+  const requested = options.provider ?? (env.JEV_COMPACT_PROVIDER as JevProvider | undefined) ?? 'auto';
   if (requested === 'typesafe' || requested === 'openrouter') return requested;
   if (options.apiKey) return 'typesafe';
   if (resolveApiKey('typesafe', { env })) return 'typesafe';
@@ -105,11 +105,11 @@ export class JevClient implements JevAsker {
     const env = this.options.env ?? process.env;
     const { provider, apiKey, model, baseUrl: url } = providerConfig(this.options);
     if (!apiKey) throw new Error(provider === 'openrouter' ? 'OPENROUTER_API_KEY is not configured' : 'TYPESAFE_API_KEY is not configured');
-    const timeout = Math.max(1, this.options.timeoutMs ?? (Number(env.CODEX_JEV_TIMEOUT_MS) || 20_000));
-    const retries = Math.max(0, this.options.retries ?? (Number(env.CODEX_JEV_RETRIES) || 1));
+    const timeout = Math.max(1, this.options.timeoutMs ?? (Number(env.JEV_COMPACT_TIMEOUT_MS) || 20_000));
+    const retries = Math.max(0, this.options.retries ?? (Number(env.JEV_COMPACT_RETRIES) || 1));
     const headers: Record<string, string> = { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' };
     if (provider === 'openrouter') {
-      headers['x-openrouter-title'] = 'codex-jev-compact';
+      headers['x-openrouter-title'] = 'jev-compact';
       if (env.OPENROUTER_HTTP_REFERER) headers['http-referer'] = env.OPENROUTER_HTTP_REFERER;
     }
     const body = JSON.stringify({ model, state, questions });

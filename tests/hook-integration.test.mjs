@@ -28,8 +28,8 @@ test('PreCompact -> PostCompact -> SessionStart works end to end', async (t) => 
   ];
   await writeFile(rollout, rows.map(JSON.stringify).join('\n'));
   const env = {
-    CODEX_JEV_DATA_DIR: join(root, 'data'), CODEX_JEV_PROVIDER: 'typesafe', TYPESAFE_API_KEY: 'test',
-    JEV_BASE_URL: `http://127.0.0.1:${port}`, CODEX_JEV_PRESERVE_RECENT: '0', CODEX_JEV_MIN_REDUCTION: '0', CODEX_JEV_RETRIES: '0'
+    JEV_COMPACT_DATA_DIR: join(root, 'data'), JEV_COMPACT_PROVIDER: 'typesafe', TYPESAFE_API_KEY: 'test',
+    JEV_BASE_URL: `http://127.0.0.1:${port}`, JEV_COMPACT_PRESERVE_RECENT: '0', JEV_COMPACT_MIN_REDUCTION: '0', JEV_COMPACT_RETRIES: '0'
   };
   const pre = await handleHook({ session_id: 's', turn_id: 't', hook_event_name: 'PreCompact', transcript_path: rollout, trigger: 'manual', model: 'gpt-test' }, env);
   assert.match(pre.systemMessage, /prepared/);

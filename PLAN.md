@@ -10,5 +10,10 @@
 - [x] Add Windows hooks, skill docs and current Codex-valid plugin metadata.
 - [x] Remove fake marketplace URL rather than ship invalid distribution metadata.
 - [x] Run full test/package/diff checks.
+- [x] Rename project surface to `jev-compact` / `JEV_COMPACT_*`.
+- [x] Invalidate stale pending state on every new PreCompact.
+- [x] Fail open on media/encrypted context Jev cannot inspect.
+- [x] Avoid repeated copying for giant JSONL lines in reverse rollout scan.
+- [x] Keep compiled `dist/` in Git for zero-build plugin runtime.
 - [ ] Optional future: portable host adapters from save-token if multi-host support becomes a goal.
 - [ ] Optional future: compaction-only Responses proxy; do not replace hook mode.

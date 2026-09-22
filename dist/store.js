@@ -2,7 +2,7 @@ import { appendFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } fro
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 function safe(value) { return value.replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 180); }
-export function dataDir(env = process.env) { return env.PLUGIN_DATA ?? env.CODEX_JEV_DATA_DIR ?? join(homedir(), '.codex', 'jev-compact'); }
+export function dataDir(env = process.env) { return env.PLUGIN_DATA ?? env.JEV_COMPACT_DATA_DIR ?? join(homedir(), '.codex', 'jev-compact'); }
 export function statePath(sessionId, env = process.env) { return join(dataDir(env), 'sessions', `${safe(sessionId)}.json`); }
 export function contextPath(sessionId, env = process.env) { return join(dataDir(env), 'sessions', `${safe(sessionId)}.context.txt`); }
 export function messagesPath(sessionId, env = process.env) { return join(dataDir(env), 'sessions', `${safe(sessionId)}.messages.json`); }
@@ -30,6 +30,12 @@ export async function prepareState(state, context, env = process.env, messages) 
         await atomicWrite(mp, `${JSON.stringify(messages, null, 2)}\n`);
     await atomicWrite(statePath(state.sessionId, env), JSON.stringify(full));
     return full;
+}
+export async function discardPendingState(sessionId, env = process.env) {
+    try {
+        await rm(statePath(sessionId, env), { force: true });
+    }
+    catch { }
 }
 export async function readState(sessionId, env = process.env) {
     try {

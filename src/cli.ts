@@ -13,11 +13,11 @@ import { dataDir } from './store.js';
 async function stdin(): Promise<string> { let s = ''; for await (const chunk of process.stdin) s += chunk; return s; }
 function flag(args: string[], name: string): string | undefined { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; }
 function help(): void {
-  console.log(`codex-jev-compact
+  console.log(`jev-compact
 
 Commands:
   install                 Install user-level Codex hooks
-  uninstall               Remove only codex-jev-compact hooks
+  uninstall               Remove only jev-compact hooks
   doctor                  Show provider/config readiness
   compact <rollout.jsonl> [--context FILE] [--json FILE]
                           Preview pruning without changing Codex
@@ -27,8 +27,8 @@ Commands:
 
 Provider:
   TYPESAFE_API_KEY=...                         direct TypeSafe
-  OPENROUTER_API_KEY=... CODEX_JEV_PROVIDER=openrouter
-  CODEX_JEV_KEY_FILE=/path/to/key              file fallback for explicitly selected provider
+  OPENROUTER_API_KEY=... JEV_COMPACT_PROVIDER=openrouter
+  JEV_COMPACT_KEY_FILE=/path/to/key              file fallback for explicitly selected provider
   TYPESAFE_API_KEY_FILE=/path/to/key           TypeSafe-specific file fallback
   OPENROUTER_API_KEY_FILE=/path/to/key         OpenRouter-specific file fallback
 `);
@@ -41,7 +41,7 @@ async function main(): Promise<void> {
   if (cmd === 'install') { const path = await installHooks(fileURLToPath(import.meta.url)); console.log(`Installed hooks: ${path}\nOpen /hooks in Codex once to review/trust them.`); return; }
   if (cmd === 'uninstall') { console.log(`Updated: ${await uninstallHooks()}`); return; }
   if (cmd === 'doctor') {
-    const provider = resolveProvider({ provider: process.env.CODEX_JEV_PROVIDER as any, env: process.env });
+    const provider = resolveProvider({ provider: process.env.JEV_COMPACT_PROVIDER as any, env: process.env });
     const config = providerConfig({ provider, env: process.env });
     console.log(JSON.stringify({
       node: process.version ?? 'unknown',

@@ -35,6 +35,7 @@ export declare function contextPath(sessionId: string, env?: Record<string, stri
 export declare function messagesPath(sessionId: string, env?: Record<string, string | undefined>): string;
 export declare function historyPath(env?: Record<string, string | undefined>): string;
 export declare function prepareState(state: Omit<SessionState, 'version' | 'ready' | 'consumed' | 'contextFile' | 'contextChars' | 'messagesFile'>, context: string, env?: Record<string, string | undefined>, messages?: readonly Message[]): Promise<SessionState>;
+export declare function discardPendingState(sessionId: string, env?: Record<string, string | undefined>): Promise<void>;
 export declare function readState(sessionId: string, env?: Record<string, string | undefined>): Promise<SessionState | undefined>;
 export declare function markReady(sessionId: string, turnId?: string, env?: Record<string, string | undefined>): Promise<SessionState | undefined>;
 export declare function claimReady(sessionId: string, ttlMs: number, env?: Record<string, string | undefined>): Promise<SessionState | undefined>;

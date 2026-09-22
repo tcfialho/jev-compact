@@ -39,6 +39,7 @@ Current Codex command hooks give `PreCompact` control over continue/stop, not a 
 | Legacy rollback correctness | no | partial/full replay | fail-open | deliberate: never judge known-wrong history |
 | Plaintext inter-agent communication | no | no | yes | Codex-aware improvement |
 | Encrypted agent context | not handled | not handled | fail-open | deliberate |
+| Image/audio message or tool-result context | opaque/generic handling varies | not handled | fail-open | Codex-aware: do not let text-only Jev judge unseen media |
 | Developer/system message preservation | generic adapter yes | Codex parser user/assistant only | yes | fixed in 0.2 |
 | `tool_search_output.tools` | generic adapter loses it | explicit support | yes | fixed before 0.2 |
 | Staged Jev state fitting | yes | yes | yes | kept |
@@ -56,6 +57,7 @@ Current Codex command hooks give `PreCompact` control over continue/stop, not a 
 | Exact retained context file | sidecar context | yes | yes | kept |
 | Structured retained messages file | no | yes | yes | restored in 0.2 |
 | Stale sidecar cleanup | no | 48h | 48h | restored in 0.2 |
+| Stale pending state invalidation on new PreCompact | no | no | yes | prevents an older prepared sidecar being readied by a later compaction |
 | Result head/tail before large reinjection | no | yes | yes | restored in 0.2 |
 | Full restore mode | effectively yes | yes, capped | yes, **default** | base behavior preserved |
 | Index restore mode | no | no | yes, optional | token-first option |
@@ -86,7 +88,7 @@ A local package cannot honestly contain a Git marketplace URL until a real repos
 
 During this audit the default was changed back to `full`, capped at 60,000 characters, because that matches the useful behavior of the base compaction plugins: Jev-selected evidence should actually be available to the model after compaction.
 
-`CODEX_JEV_RESTORE_MODE=index` remains available for aggressive token reduction. `hybrid` is the middle ground. The exact archive is kept on disk in all modes.
+`JEV_COMPACT_RESTORE_MODE=index` remains available for aggressive token reduction. `hybrid` is the middle ground. The exact archive is kept on disk in all modes.
 
 ## Evidence-driven invariants
 
