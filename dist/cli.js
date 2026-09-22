@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { spawn } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { compactMessages, reductionRatio } from './compact.js';
@@ -15,6 +16,43 @@ async function stdin() { let s = ''; for await (const chunk of process.stdin)
 function flag(args, name) { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; }
 function fmt(n) { return Number(n || 0).toLocaleString(); }
 function chars(n) { return n >= 1_000_000 ? `${(n / 1_000_000).toFixed(2)}M chars` : n >= 1_000 ? `${(n / 1_000).toFixed(1)}k chars` : `${fmt(n)} chars`; }
+async function launchDashboard(port) {
+    const child = spawn(process.execPath, [fileURLToPath(import.meta.url), 'dashboard', '--port', String(port), '--background'], {
+        detached: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+    });
+    child.unref();
+    return new Promise((resolve, reject) => {
+        let output = '';
+        let errorOutput = '';
+        let settled = false;
+        const timeout = setTimeout(() => finish(new Error('dashboard did not start within 5 seconds')), 5000);
+        const finish = (error, url) => {
+            if (settled)
+                return;
+            settled = true;
+            clearTimeout(timeout);
+            child.stdout?.destroy();
+            child.stderr?.destroy();
+            if (error)
+                reject(error);
+            else
+                resolve(url ?? '');
+        };
+        child.stdout?.setEncoding('utf8');
+        child.stderr?.setEncoding('utf8');
+        child.stdout?.on('data', (chunk) => {
+            output += chunk;
+            const line = output.split(/\r?\n/, 1)[0];
+            if (line)
+                finish(undefined, line);
+        });
+        child.stderr?.on('data', (chunk) => { errorOutput += chunk; });
+        child.once('error', (error) => finish(error));
+        child.once('exit', (code) => finish(new Error(errorOutput.trim() || `dashboard process exited (${code})`)));
+    });
+}
 function help() {
     console.log(`jev-compact
 
@@ -239,7 +277,13 @@ async function main() {
     }
     if (cmd === 'dashboard') {
         const requested = flag(args, '--port') ?? args.find((x) => /^\d+$/.test(x));
-        const { url } = await startDashboard(requested ? Number(requested) : 43127);
+        const port = requested ? Number(requested) : 43127;
+        if (args.includes('--background')) {
+            const { url } = await startDashboard(port);
+            process.stdout.write(`${url}\n`);
+            return;
+        }
+        const url = await launchDashboard(port);
         console.log(`Dashboard: ${url}`);
         return;
     }
