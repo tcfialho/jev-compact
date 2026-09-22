@@ -1,0 +1,21 @@
+{
+  "name": "codex-jev-compact",
+  "version": "0.2.0",
+  "description": "Jev-guided verbatim context retention around Codex compaction.",
+  "author": { "name": "codex-jev-compact contributors" },
+  "license": "MIT",
+  "keywords": ["codex", "jev", "compaction", "openrouter", "context"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Codex Jev Compact",
+    "shortDescription": "Preserve useful verbatim context across compaction.",
+    "longDescription": "Uses Jev to select useful tool history before Codex compaction and restores it once afterward, with TypeSafe and OpenRouter transports and local metrics.",
+    "developerName": "codex-jev-compact contributors",
+    "category": "Productivity",
+    "capabilities": ["hooks"],
+    "defaultPrompt": [
+      "Show what Jev retained from the last compaction.",
+      "Explain my codex-jev-compact configuration."
+    ]
+  }
+}

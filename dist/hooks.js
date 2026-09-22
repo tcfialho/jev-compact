@@ -1,0 +1,119 @@
+import { readFile } from 'node:fs/promises';
+import { compactMessages, reductionRatio } from './compact.js';
+import { providerConfig, resolveProvider } from './provider.js';
+import { loadCodexRollout } from './rollout.js';
+import { capContext, renderIndex, renderMessages, renderMessagesForInjection } from './render.js';
+import { appendHistory, claimReady, markReady, prepareState, sweep } from './store.js';
+function num(env, key, fallback) {
+    const n = Number(env[key]);
+    return Number.isFinite(n) ? n : fallback;
+}
+function parseInput(value) {
+    if (!value || typeof value !== 'object')
+        throw new Error('invalid hook input');
+    const v = value;
+    if (typeof v.session_id !== 'string' || typeof v.hook_event_name !== 'string')
+        throw new Error('invalid hook input');
+    return {
+        session_id: v.session_id,
+        hook_event_name: v.hook_event_name,
+        turn_id: typeof v.turn_id === 'string' ? v.turn_id : undefined,
+        transcript_path: typeof v.transcript_path === 'string' || v.transcript_path === null ? v.transcript_path : undefined,
+        source: typeof v.source === 'string' ? v.source : undefined,
+        trigger: typeof v.trigger === 'string' ? v.trigger : undefined,
+        model: typeof v.model === 'string' ? v.model : undefined,
+    };
+}
+function requestedProvider(env) {
+    const value = env.CODEX_JEV_PROVIDER;
+    return value === 'typesafe' || value === 'openrouter' || value === 'auto' ? value : undefined;
+}
+function providerName(env) {
+    return resolveProvider({ provider: requestedProvider(env), env });
+}
+async function injectableArchive(messagesFile, contextFile) {
+    if (messagesFile) {
+        try {
+            const messages = JSON.parse(await readFile(messagesFile, 'utf8'));
+            if (Array.isArray(messages))
+                return renderMessagesForInjection(messages);
+        }
+        catch { }
+    }
+    return readFile(contextFile, 'utf8');
+}
+async function restore(input, event, env) {
+    const ttl = num(env, 'CODEX_JEV_RESTORE_TTL_MS', 86_400_000);
+    const state = await claimReady(input.session_id, ttl, env);
+    if (!state)
+        return { continue: true, suppressOutput: true };
+    const mode = env.CODEX_JEV_RESTORE_MODE ?? 'full';
+    const cap = num(env, 'CODEX_JEV_CONTEXT_CHARS', 60_000);
+    let payload = state.index;
+    if (mode === 'full')
+        payload = capContext(await injectableArchive(state.messagesFile, state.contextFile), cap);
+    else if (mode === 'hybrid')
+        payload = `${state.index}\n\nRetained verbatim excerpt:\n${capContext(await injectableArchive(state.messagesFile, state.contextFile), Math.min(cap, 12_000))}`;
+    const header = 'Codex compacted this session. Jev selected useful pre-compaction evidence. The compact index is injected below; exact retained history remains on disk. Missing tool calls were judged stale and can be rerun.';
+    const structured = state.messagesFile ? `\nStructured retained messages: ${state.messagesFile}` : '';
+    const injected = `${header}\n\n${payload}\n\nFull retained context: ${state.contextFile}${structured}`;
+    await appendHistory({ at: new Date().toISOString(), sessionId: input.session_id, turnId: input.turn_id, status: 'restored', stats: state.stats, injectedChars: injected.length, retainedChars: state.contextChars }, env);
+    return {
+        continue: true,
+        suppressOutput: true,
+        hookSpecificOutput: { hookEventName: event, additionalContext: injected },
+    };
+}
+export async function handleHook(value, env = process.env) {
+    const input = parseInput(value);
+    if (input.hook_event_name === 'PreCompact') {
+        if (!input.transcript_path)
+            return { continue: true, systemMessage: 'codex-jev-compact: no transcript path; native compaction only' };
+        try {
+            await sweep(env, num(env, 'CODEX_JEV_STATE_MAX_AGE_MS', 48 * 60 * 60 * 1000));
+            const messages = await loadCodexRollout(input.transcript_path);
+            if (messages.length < 2)
+                return { continue: true, suppressOutput: true };
+            const provider = resolveProvider({ provider: requestedProvider(env), env });
+            const transport = providerConfig({ provider, env });
+            const result = await compactMessages(messages, {
+                provider,
+                env,
+                model: transport.model,
+                goal: env.CODEX_JEV_GOAL ?? env.FAST_JEV_GOAL,
+                baseUrl: transport.baseUrl,
+                keepThreshold: num(env, 'CODEX_JEV_KEEP_THRESHOLD', 0.5),
+                preserveRecentMessages: num(env, 'CODEX_JEV_PRESERVE_RECENT', 6),
+                maxStateTokens: num(env, 'CODEX_JEV_MAX_STATE_TOKENS', 24_000),
+                maxRequestTokens: num(env, 'CODEX_JEV_MAX_REQUEST_TOKENS', 30_000),
+                truncateHeadChars: num(env, 'CODEX_JEV_TRUNCATE_HEAD_CHARS', 300),
+                maxConcurrentRequests: num(env, 'CODEX_JEV_CONCURRENCY', 4),
+                timeoutMs: num(env, 'CODEX_JEV_TIMEOUT_MS', 20_000),
+                retries: num(env, 'CODEX_JEV_RETRIES', 1),
+            });
+            const minimum = num(env, 'CODEX_JEV_MIN_REDUCTION', 0.15);
+            if (reductionRatio(result) < minimum) {
+                await appendHistory({ at: new Date().toISOString(), sessionId: input.session_id, turnId: input.turn_id, trigger: input.trigger, model: input.model, provider, status: 'skipped', stats: result.stats, decisions: result.decisions, detail: `reduction below ${minimum}` }, env);
+                return { continue: true, suppressOutput: true };
+            }
+            await prepareState({ sessionId: input.session_id, turnId: input.turn_id, trigger: input.trigger, model: input.model, createdAt: new Date().toISOString(), stats: result.stats, decisions: result.decisions, index: renderIndex(result.messages, result.decisions, num(env, 'CODEX_JEV_INDEX_CHARS', 12_000)) }, renderMessages(result.messages), env, result.messages);
+            await appendHistory({ at: new Date().toISOString(), sessionId: input.session_id, turnId: input.turn_id, trigger: input.trigger, model: input.model, provider, status: 'prepared', stats: result.stats, decisions: result.decisions }, env);
+            return { continue: true, systemMessage: `codex-jev-compact: prepared ${Math.round(reductionRatio(result) * 100)}% smaller retained context (${result.stats.callsDropped} calls dropped, ${result.stats.resultsTruncated} results truncated)` };
+        }
+        catch (error) {
+            await appendHistory({ at: new Date().toISOString(), sessionId: input.session_id, turnId: input.turn_id, trigger: input.trigger, model: input.model, provider: providerName(env), status: 'failed', detail: error instanceof Error ? error.message : String(error) }, env);
+            return { continue: true, systemMessage: `codex-jev-compact: native compaction fallback (${error instanceof Error ? error.message : String(error)})` };
+        }
+    }
+    if (input.hook_event_name === 'PostCompact') {
+        const state = await markReady(input.session_id, input.turn_id, env);
+        if (state)
+            await appendHistory({ at: new Date().toISOString(), sessionId: input.session_id, turnId: input.turn_id, trigger: input.trigger, model: input.model, provider: providerName(env), status: 'ready', stats: state.stats, decisions: state.decisions }, env);
+        return { continue: true, suppressOutput: true };
+    }
+    if (input.hook_event_name === 'SessionStart' && input.source === 'compact')
+        return restore(input, 'SessionStart', env);
+    if (input.hook_event_name === 'UserPromptSubmit')
+        return restore(input, 'UserPromptSubmit', env);
+    return { continue: true, suppressOutput: true };
+}

@@ -1,0 +1,44 @@
+import type { CallDecision, CompactStats, Message } from './types.js';
+export interface SessionState {
+    version: 1;
+    sessionId: string;
+    turnId?: string;
+    trigger?: string;
+    model?: string;
+    createdAt: string;
+    ready: boolean;
+    consumed: boolean;
+    contextFile: string;
+    messagesFile?: string;
+    index: string;
+    contextChars: number;
+    stats: CompactStats;
+    decisions: CallDecision[];
+}
+export interface HistoryRow {
+    at: string;
+    sessionId: string;
+    turnId?: string;
+    trigger?: string;
+    model?: string;
+    provider?: string;
+    status: 'prepared' | 'ready' | 'restored' | 'skipped' | 'failed';
+    stats?: CompactStats;
+    decisions?: CallDecision[];
+    detail?: string;
+    injectedChars?: number;
+    retainedChars?: number;
+}
+export declare function dataDir(env?: Record<string, string | undefined>): string;
+export declare function statePath(sessionId: string, env?: Record<string, string | undefined>): string;
+export declare function contextPath(sessionId: string, env?: Record<string, string | undefined>): string;
+export declare function messagesPath(sessionId: string, env?: Record<string, string | undefined>): string;
+export declare function historyPath(env?: Record<string, string | undefined>): string;
+export declare function prepareState(state: Omit<SessionState, 'version' | 'ready' | 'consumed' | 'contextFile' | 'contextChars' | 'messagesFile'>, context: string, env?: Record<string, string | undefined>, messages?: readonly Message[]): Promise<SessionState>;
+export declare function readState(sessionId: string, env?: Record<string, string | undefined>): Promise<SessionState | undefined>;
+export declare function markReady(sessionId: string, turnId?: string, env?: Record<string, string | undefined>): Promise<SessionState | undefined>;
+export declare function claimReady(sessionId: string, ttlMs: number, env?: Record<string, string | undefined>): Promise<SessionState | undefined>;
+/** Best-effort cleanup of stale per-session sidecars. History is intentionally retained. */
+export declare function sweep(env?: Record<string, string | undefined>, maxAgeMs?: number): Promise<number>;
+export declare function appendHistory(row: HistoryRow, env?: Record<string, string | undefined>): Promise<void>;
+export declare function readHistory(env?: Record<string, string | undefined>): Promise<HistoryRow[]>;

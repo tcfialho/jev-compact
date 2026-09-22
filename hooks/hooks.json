@@ -1,0 +1,9 @@
+{
+  "description": "Jev-guided verbatim context retention around Codex compaction.",
+  "hooks": {
+    "PreCompact": [{ "matcher": "manual|auto", "hooks": [{ "type": "command", "command": "node \"${PLUGIN_ROOT}/dist/cli.js\" hook --codex-jev-compact", "commandWindows": "node \"%PLUGIN_ROOT%\\dist\\cli.js\" hook --codex-jev-compact", "timeout": 120, "statusMessage": "Selecting retained context with Jev" }] }],
+    "PostCompact": [{ "matcher": "manual|auto", "hooks": [{ "type": "command", "command": "node \"${PLUGIN_ROOT}/dist/cli.js\" hook --codex-jev-compact", "commandWindows": "node \"%PLUGIN_ROOT%\\dist\\cli.js\" hook --codex-jev-compact", "timeout": 10 }] }],
+    "SessionStart": [{ "matcher": "compact", "hooks": [{ "type": "command", "command": "node \"${PLUGIN_ROOT}/dist/cli.js\" hook --codex-jev-compact", "commandWindows": "node \"%PLUGIN_ROOT%\\dist\\cli.js\" hook --codex-jev-compact", "timeout": 10, "additionalContextLimit": 65536, "statusMessage": "Restoring Jev-retained context" }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "node \"${PLUGIN_ROOT}/dist/cli.js\" hook --codex-jev-compact", "commandWindows": "node \"%PLUGIN_ROOT%\\dist\\cli.js\" hook --codex-jev-compact", "timeout": 10, "additionalContextLimit": 65536 }] }]
+  }
+}

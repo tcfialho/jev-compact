@@ -1,0 +1,128 @@
+import { appendFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { dirname, join } from 'node:path';
+function safe(value) { return value.replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 180); }
+export function dataDir(env = process.env) { return env.PLUGIN_DATA ?? env.CODEX_JEV_DATA_DIR ?? join(homedir(), '.codex', 'jev-compact'); }
+export function statePath(sessionId, env = process.env) { return join(dataDir(env), 'sessions', `${safe(sessionId)}.json`); }
+export function contextPath(sessionId, env = process.env) { return join(dataDir(env), 'sessions', `${safe(sessionId)}.context.txt`); }
+export function messagesPath(sessionId, env = process.env) { return join(dataDir(env), 'sessions', `${safe(sessionId)}.messages.json`); }
+export function historyPath(env = process.env) { return join(dataDir(env), 'history.jsonl'); }
+async function atomicWrite(path, text) {
+    await mkdir(dirname(path), { recursive: true });
+    const tmp = `${path}.${process.pid}.tmp`;
+    await writeFile(tmp, text, { mode: 0o600 });
+    await rename(tmp, path);
+}
+export async function prepareState(state, context, env = process.env, messages) {
+    const cp = contextPath(state.sessionId, env);
+    const mp = messages?.length ? messagesPath(state.sessionId, env) : undefined;
+    const full = {
+        version: 1,
+        ...state,
+        ready: false,
+        consumed: false,
+        contextFile: cp,
+        ...(mp ? { messagesFile: mp } : {}),
+        contextChars: context.length,
+    };
+    await atomicWrite(cp, context);
+    if (mp)
+        await atomicWrite(mp, `${JSON.stringify(messages, null, 2)}\n`);
+    await atomicWrite(statePath(state.sessionId, env), JSON.stringify(full));
+    return full;
+}
+export async function readState(sessionId, env = process.env) {
+    try {
+        const parsed = JSON.parse(await readFile(statePath(sessionId, env), 'utf8'));
+        return parsed?.version === 1 ? parsed : undefined;
+    }
+    catch {
+        return undefined;
+    }
+}
+export async function markReady(sessionId, turnId, env = process.env) {
+    const state = await readState(sessionId, env);
+    if (!state || (state.turnId && turnId && state.turnId !== turnId))
+        return undefined;
+    const next = { ...state, ready: true };
+    await atomicWrite(statePath(sessionId, env), JSON.stringify(next));
+    return next;
+}
+export async function claimReady(sessionId, ttlMs, env = process.env) {
+    const path = statePath(sessionId, env);
+    const claim = `${path}.${process.pid}.claim`;
+    try {
+        await rename(path, claim);
+    }
+    catch {
+        return undefined;
+    }
+    let state;
+    try {
+        const parsed = JSON.parse(await readFile(claim, 'utf8'));
+        const age = Date.now() - Date.parse(parsed.createdAt);
+        if (parsed.version === 1 && parsed.ready && !parsed.consumed && age >= 0 && age <= ttlMs)
+            state = parsed;
+        const next = { ...parsed, consumed: !!state || parsed.consumed };
+        await atomicWrite(path, JSON.stringify(next));
+    }
+    catch {
+        try {
+            await rename(claim, path);
+        }
+        catch { }
+        return undefined;
+    }
+    try {
+        await rm(claim, { force: true });
+    }
+    catch { }
+    return state;
+}
+/** Best-effort cleanup of stale per-session sidecars. History is intentionally retained. */
+export async function sweep(env = process.env, maxAgeMs = 48 * 60 * 60 * 1000) {
+    const dir = join(dataDir(env), 'sessions');
+    const cutoff = Date.now() - Math.max(0, maxAgeMs);
+    let removed = 0;
+    let names;
+    try {
+        names = await readdir(dir);
+    }
+    catch {
+        return 0;
+    }
+    for (const name of names) {
+        if (!/\.(?:json|txt|claim)$/.test(name))
+            continue;
+        const path = join(dir, name);
+        try {
+            const info = await stat(path);
+            if (info.mtimeMs < cutoff) {
+                await rm(path, { force: true });
+                removed++;
+            }
+        }
+        catch { }
+    }
+    return removed;
+}
+export async function appendHistory(row, env = process.env) {
+    const path = historyPath(env);
+    await mkdir(dirname(path), { recursive: true });
+    await appendFile(path, `${JSON.stringify(row)}\n`, { mode: 0o600 });
+}
+export async function readHistory(env = process.env) {
+    try {
+        return (await readFile(historyPath(env), 'utf8')).split(/\r?\n/).filter(Boolean).flatMap((line) => {
+            try {
+                return [JSON.parse(line)];
+            }
+            catch {
+                return [];
+            }
+        });
+    }
+    catch {
+        return [];
+    }
+}
