@@ -2,6 +2,9 @@ import { type JevClientOptions } from './provider.js';
 import type { CompactResult, JevAsker, Message } from './types.js';
 export interface CompactOptions {
     goal?: string;
+    /** Preferred name: maximum accepted loss risk for a destructive action. */
+    lossThreshold?: number;
+    /** @deprecated Use lossThreshold. */
     keepThreshold?: number;
     preserveRecentMessages?: number;
     maxStateTokens?: number;

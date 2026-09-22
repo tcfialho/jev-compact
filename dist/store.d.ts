@@ -2,6 +2,7 @@ import type { CallDecision, CompactStats, Message } from './types.js';
 export interface SessionState {
     version: 1;
     sessionId: string;
+    runId?: string;
     turnId?: string;
     trigger?: string;
     model?: string;
@@ -17,15 +18,19 @@ export interface SessionState {
 }
 export interface HistoryRow {
     at: string;
+    runId?: string;
     sessionId: string;
     turnId?: string;
     trigger?: string;
     model?: string;
     provider?: string;
+    phase?: 'precompact' | 'postcompact' | 'restore';
     status: 'prepared' | 'ready' | 'restored' | 'skipped' | 'failed';
     stats?: CompactStats;
     decisions?: CallDecision[];
     detail?: string;
+    restoreMode?: 'preserve' | 'balanced' | 'minimal';
+    restoreLimitChars?: number;
     injectedChars?: number;
     injectedPayloadChars?: number;
     retainedChars?: number;

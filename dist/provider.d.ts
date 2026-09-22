@@ -13,6 +13,13 @@ export interface JevClientOptions {
     /** Cache serialization only when callers keep Jev state objects immutable between asks. */
     cacheStateSerialization?: boolean;
 }
+export declare function configDir(env?: Env): string;
+export declare function defaultKeyPath(provider: Exclude<JevProvider, 'auto'>, env?: Env): string;
+export declare function providerPreferencePath(env?: Env): string;
+export declare function saveProviderConfiguration(provider: Exclude<JevProvider, 'auto'>, apiKey: string, env?: Env): Promise<{
+    keyFile: string;
+    providerFile: string;
+}>;
 export declare function resolveApiKey(provider: Exclude<JevProvider, 'auto'>, options?: Pick<JevClientOptions, 'apiKey' | 'env'>): string;
 export declare function resolveProvider(options?: Pick<JevClientOptions, 'provider' | 'env' | 'apiKey'>): Exclude<JevProvider, 'auto'>;
 export declare function providerConfig(options?: JevClientOptions): {

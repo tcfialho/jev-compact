@@ -4,55 +4,170 @@ import { fileURLToPath } from 'node:url';
 import { compactMessages, reductionRatio } from './compact.js';
 import { startDashboard, stats } from './dashboard.js';
 import { handleHook } from './hooks.js';
-import { installHooks, uninstallHooks } from './install.js';
-import { providerConfig, resolveApiKey, resolveProvider } from './provider.js';
+import { resetUserSettings, setUserSetting, userSettings, type SettingName } from './settings.js';
+import { inspectHooks, installHooks, installRuntime, uninstallHooks } from './install.js';
+import { providerConfig, resolveApiKey, resolveProvider, saveProviderConfiguration, type JevProvider } from './provider.js';
 import { renderMessages } from './render.js';
 import { loadCodexRollout } from './rollout.js';
 import { dataDir } from './store.js';
 
 async function stdin(): Promise<string> { let s = ''; for await (const chunk of process.stdin) s += chunk; return s; }
 function flag(args: string[], name: string): string | undefined { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; }
+function fmt(n: number): string { return Number(n || 0).toLocaleString(); }
+function chars(n: number): string { return n >= 1_000_000 ? `${(n / 1_000_000).toFixed(2)}M chars` : n >= 1_000 ? `${(n / 1_000).toFixed(1)}k chars` : `${fmt(n)} chars`; }
+
 function help(): void {
   console.log(`jev-compact
 
-Commands:
-  install                 Install user-level Codex hooks
-  uninstall               Remove only jev-compact hooks
-  doctor                  Show provider/config readiness
-  compact <rollout.jsonl> [--context FILE] [--json FILE]
-                          Preview pruning without changing Codex
-  stats [--json]          Show measured local savings
-  dashboard [port]        Start local read-only dashboard
-  hook                    Internal Codex hook entrypoint
+First-time setup:
+  jev-compact setup                  TypeSafe: save key + install Codex hooks
+  jev-compact setup openrouter       OpenRouter: save key + install Codex hooks
+  jev-compact configure PROVIDER     Change provider/key without reinstalling hooks
+  jev-compact install                Point Codex hooks at this checkout (development/local use)
+  jev-compact doctor                 Verify everything is ready
+  jev-compact config                 Show the five user-facing settings
+  jev-compact config NAME VALUE      Save a setting (works with desktop Codex too)
+  jev-compact config reset           Reset saved user settings to defaults
 
-Provider:
-  TYPESAFE_API_KEY=...                         direct TypeSafe
-  OPENROUTER_API_KEY=... JEV_COMPACT_PROVIDER=openrouter
-  JEV_COMPACT_KEY_FILE=/path/to/key              file fallback for explicitly selected provider
-  TYPESAFE_API_KEY_FILE=/path/to/key           TypeSafe-specific file fallback
-  OPENROUTER_API_KEY_FILE=/path/to/key         OpenRouter-specific file fallback
-`);
+Useful commands:
+  jev-compact dashboard [--port N]   Local measured-impact dashboard
+  jev-compact stats [--json]         Measured local compaction statistics
+  jev-compact compact FILE [--context FILE] [--json FILE]
+                                     Preview Jev selection on a Codex rollout
+  jev-compact uninstall              Remove only jev-compact hooks
+
+Environment variables remain supported and override saved configuration.
+Run "jev-compact doctor --json" for machine-readable readiness details.`);
+}
+
+async function secret(prompt: string): Promise<string> {
+  if (!process.stdin.isTTY || !process.stdout.isTTY || typeof process.stdin.setRawMode !== 'function') return (await stdin()).trim();
+  process.stdout.write(prompt);
+  process.stdin.setRawMode(true);
+  process.stdin.resume();
+  return new Promise<string>((resolve, reject) => {
+    let value = '';
+    const cleanup = () => { process.stdin.off('data', onData); process.stdin.setRawMode(false); process.stdin.pause(); };
+    const onData = (chunk: any) => {
+      const text = String(chunk);
+      for (const ch of text) {
+        if (ch === '\u0003') { cleanup(); process.stdout.write('\n'); reject(new Error('cancelled')); return; }
+        if (ch === '\r' || ch === '\n') { cleanup(); process.stdout.write('\n'); resolve(value.trim()); return; }
+        if (ch === '\u007f' || ch === '\b') { if (value) { value = value.slice(0, -1); process.stdout.write('\b \b'); } continue; }
+        if (ch >= ' ') { value += ch; process.stdout.write('*'); }
+      }
+    };
+    process.stdin.on('data', onData);
+  });
+}
+
+async function readiness() {
+  const provider = resolveProvider({ provider: process.env.JEV_COMPACT_PROVIDER as JevProvider | undefined, env: process.env });
+  const config = providerConfig({ provider, env: process.env });
+  const hooks = await inspectHooks(process.env);
+  const settings = userSettings(process.env);
+  return {
+    node: process.version ?? 'unknown',
+    provider,
+    apiKeyConfigured: !!resolveApiKey(provider, { env: process.env }),
+    model: config.model,
+    baseUrl: config.baseUrl,
+    hooksInstalled: hooks.installed,
+    hookEvents: hooks.events,
+    hooksFile: hooks.path,
+    dataDir: dataDir(process.env),
+    settings,
+  };
+}
+
+
+function printSettings(settings: ReturnType<typeof userSettings>): void {
+  console.log(`restore-mode          ${settings.restoreMode}`);
+  console.log(`restore-max-chars     ${settings.restoreMaxChars}`);
+  console.log(`pin-recent-messages   ${settings.pinRecentMessages}`);
+  console.log(`loss-threshold        ${settings.lossThreshold}`);
+  console.log(`min-reduction-ratio   ${settings.minReductionRatio}`);
+  if (settings.restoreModeWarning) console.log(`warning               ${settings.restoreModeWarning}`);
+}
+
+async function configureProvider(provider: Exclude<JevProvider, 'auto'>): Promise<void> {
+  const key = await secret(`${provider === 'typesafe' ? 'TypeSafe' : 'OpenRouter'} API key: `);
+  const saved = await saveProviderConfiguration(provider, key, process.env);
+  console.log(`Configured ${provider}.\nKey saved: ${saved.keyFile}\nProvider preference saved: ${saved.providerFile}`);
+}
+
+async function installAndExplain(cliPath = fileURLToPath(import.meta.url), commandPrefix = 'jev-compact'): Promise<void> {
+  const path = await installHooks(cliPath);
+  const ready = await readiness();
+  console.log(`jev-compact hooks installed: ${path}`);
+  console.log(`Provider: ${ready.provider} · API key: ${ready.apiKeyConfigured ? 'configured' : 'MISSING'}`);
+  if (!ready.apiKeyConfigured) console.log(`Configure it with: ${commandPrefix} configure ${ready.provider}`);
+  console.log('Next: restart Codex, open /hooks once, and enable/trust the jev-compact hooks.');
+  console.log(`Then run: ${commandPrefix} doctor`);
 }
 
 async function main(): Promise<void> {
   const [cmd, ...args] = process.argv.slice(2);
   if (!cmd || cmd === 'help' || cmd === '--help' || cmd === '-h') return help();
   if (cmd === 'hook') { const out = await handleHook(JSON.parse(await stdin())); process.stdout.write(`${JSON.stringify(out)}\n`); return; }
-  if (cmd === 'install') { const path = await installHooks(fileURLToPath(import.meta.url)); console.log(`Installed hooks: ${path}\nOpen /hooks in Codex once to review/trust them.`); return; }
-  if (cmd === 'uninstall') { console.log(`Updated: ${await uninstallHooks()}`); return; }
-  if (cmd === 'doctor') {
-    const provider = resolveProvider({ provider: process.env.JEV_COMPACT_PROVIDER as any, env: process.env });
-    const config = providerConfig({ provider, env: process.env });
-    console.log(JSON.stringify({
-      node: process.version ?? 'unknown',
-      provider,
-      apiKey: resolveApiKey(provider, { env: process.env }) ? 'configured' : 'missing',
-      model: config.model,
-      baseUrl: config.baseUrl,
-      dataDir: dataDir(process.env),
-    }, null, 2));
+
+  if (cmd === 'configure') {
+    const provider = args[0] as Exclude<JevProvider, 'auto'> | undefined;
+    if (provider !== 'typesafe' && provider !== 'openrouter') throw new Error('usage: jev-compact configure <typesafe|openrouter>');
+    await configureProvider(provider);
     return;
   }
+
+  if (cmd === 'config') {
+    if (!args.length) { printSettings(userSettings(process.env)); return; }
+    if (args[0] === 'reset') { await resetUserSettings(process.env); console.log('Saved jev-compact settings reset to defaults.'); printSettings(userSettings(process.env)); return; }
+    if (args.length < 2) throw new Error('usage: jev-compact config <restore-mode|restore-max-chars|pin-recent-messages|loss-threshold|min-reduction-ratio> <value>');
+    const name = args[0] as SettingName;
+    if (!['restore-mode','restore-max-chars','pin-recent-messages','loss-threshold','min-reduction-ratio'].includes(name)) throw new Error(`unknown setting: ${args[0]}`);
+    const settings = await setUserSetting(name, args[1]!, process.env);
+    console.log(`Saved ${name}=${args[1]}`);
+    printSettings(settings);
+    return;
+  }
+
+  if (cmd === 'setup') {
+    const provider = (args[0] ?? 'typesafe') as Exclude<JevProvider, 'auto'>;
+    if (provider !== 'typesafe' && provider !== 'openrouter') throw new Error('usage: jev-compact setup [typesafe|openrouter]');
+    await configureProvider(provider);
+    const runtimeCli = await installRuntime(fileURLToPath(import.meta.url), process.env);
+    console.log(`Runtime installed: ${runtimeCli}`);
+    await installAndExplain(runtimeCli, `node \"${runtimeCli}\"`);
+    return;
+  }
+
+  if (cmd === 'install') {
+    await installAndExplain();
+    return;
+  }
+  if (cmd === 'uninstall') { console.log(`Updated: ${await uninstallHooks()}`); return; }
+
+  if (cmd === 'doctor') {
+    const value = await readiness();
+    if (args.includes('--json')) { console.log(JSON.stringify(value, null, 2)); return; }
+    console.log(`jev-compact doctor\n`);
+    console.log(`${value.apiKeyConfigured ? 'OK' : 'MISSING'}  API key (${value.provider})`);
+    console.log(`${value.hooksInstalled ? 'OK' : 'MISSING'}  Codex hooks (${value.hookEvents.join(', ') || 'none'})`);
+    console.log(`OK  Node ${value.node}`);
+    console.log(`    Model: ${value.model}`);
+    console.log(`    Hooks: ${value.hooksFile}`);
+    console.log(`    Data:  ${value.dataDir}`);
+    console.log(`    Restore: ${value.settings.restoreMode} · max ${fmt(value.settings.restoreMaxChars)} chars`);
+    console.log(`    Pruning: loss <= ${value.settings.lossThreshold.toFixed(2)} · pin ${fmt(value.settings.pinRecentMessages)} recent messages · require ${(value.settings.minReductionRatio * 100).toFixed(0)}% reduction`);
+    if (value.settings.restoreModeWarning) console.log(`WARN  ${value.settings.restoreModeWarning}`);
+    if (!value.apiKeyConfigured && !value.hooksInstalled) {
+      console.log(`\nFix both: jev-compact setup${value.provider === 'openrouter' ? ' openrouter' : ''}`);
+    } else {
+      if (!value.apiKeyConfigured) console.log(`\nFix API key: jev-compact configure ${value.provider}`);
+      if (!value.hooksInstalled) console.log('\nFix hooks: jev-compact install');
+    }
+    return;
+  }
+
   if (cmd === 'compact') {
     if (!args[0]) throw new Error('compact requires a rollout JSONL path');
     const messages = await loadCodexRollout(args[0]);
@@ -66,13 +181,26 @@ async function main(): Promise<void> {
     console.error(JSON.stringify({ ...result.stats, reductionRatio: reductionRatio(result) }, null, 2));
     return;
   }
+
   if (cmd === 'stats') {
     const value = await stats();
-    if (args.includes('--json')) console.log(JSON.stringify(value, null, 2));
-    else console.log(`${value.estimatedPrunedTokens.toLocaleString()} estimated retained-history tokens pruned · ${value.estimatedRestoreTokensAvoided.toLocaleString()} reinjection tokens avoided vs full restore · ${value.jevInputTokens.toLocaleString()} measured Jev input tokens · ${value.compactions} compactions · ${value.failures} failures`);
+    if (args.includes('--json')) { console.log(JSON.stringify(value, null, 2)); return; }
+    console.log(`Compaction attempts: ${fmt(value.attempts)} · restored: ${fmt(value.restored)} · skips: ${fmt(value.skipped)} · native fallbacks: ${fmt(value.nativeFallbacks)} · restore issues: ${fmt(value.restoreFailures)}`);
+    console.log(`Completed retained-copy reduction: ${chars(value.completedCharsRemoved)} (${(value.completedReductionRatio * 100).toFixed(1)}%)`);
+    console.log(`Hook context delivered after compaction: ${chars(value.injectedChars)}`);
+    console.log(`  selected evidence inside it: ${chars(value.injectedPayloadChars)}`);
+    if (value.jevUsageReportedRequests) console.log(`Jev provider usage reported: ${fmt(value.jevInputTokens)} input + ${fmt(value.jevOutputTokens)} output tokens (${fmt(value.jevUsageReportedRequests)}/${fmt(value.jevRequests)} requests reported usage)`);
+    else console.log(`Jev provider usage: not reported (${fmt(value.jevRequests)} requests observed)`);
+    console.log(`Average Jev selection time: ${fmt(value.averageSelectionMs)} ms`);
     return;
   }
-  if (cmd === 'dashboard') { await startDashboard(Number(args[0]) || 43127); return; }
+
+  if (cmd === 'dashboard') {
+    const requested = flag(args, '--port') ?? args.find((x) => /^\d+$/.test(x));
+    const { url } = await startDashboard(requested ? Number(requested) : 43127);
+    console.log(`Dashboard: ${url}`);
+    return;
+  }
   throw new Error(`unknown command: ${cmd}`);
 }
 

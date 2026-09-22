@@ -168,3 +168,24 @@ test('image generation context fails open because Jev is text-only', () => {
   const rows = [{ type: 'response_item', payload: { type: 'image_generation_call', id: 'ig_1', status: 'completed', revised_prompt: 'diagram', result: 'base64-image' } }];
   assert.throws(() => parseCodexRollout(rows.map(JSON.stringify).join('\n')), UnsupportedCodexRolloutError);
 });
+
+
+test('unknown future response items fail open instead of silently hiding context from Jev', () => {
+  const line = JSON.stringify({ type: 'response_item', payload: { type: 'future_model_visible_item', content: [{ type: 'input_text', text: 'important future context' }] } });
+  assert.throws(() => parseCodexRollout(line), /unknown Codex response item type/);
+});
+
+test('unknown future rollout records fail open while current metadata remains ignorable', () => {
+  const known = [
+    { type: 'session_meta', payload: { id: 's' } },
+    { type: 'world_state', payload: { full: true, value: {} } },
+    { type: 'turn_context', payload: { turn_id: 't' } },
+    { type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'hello' }] } },
+  ].map(JSON.stringify).join('\n');
+  assert.equal(parseCodexRollout(known).at(-1).text, 'hello');
+  assert.throws(() => parseCodexRollout(JSON.stringify({ type: 'future_rollout_fact', payload: { important: true } })), /unknown Codex rollout item type/);
+});
+
+test('realtime rollout content fails open instead of being invisibly omitted', () => {
+  assert.throws(() => parseCodexRollout(JSON.stringify({ type: 'realtime_item', payload: { audio: 'opaque' } })), /realtime Codex history/);
+});

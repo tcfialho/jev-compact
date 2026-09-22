@@ -30,3 +30,19 @@
 - [x] Reduce sidecar/history write amplification.
 - [x] Add regressions for provider caching, Noul bounds, encrypted args/media, restore retry and logging failure.
 - [x] Final release validation, Git commit, ZIP/bundle/npm package.
+
+# 0.4 dashboard / UX / Codex compatibility pass
+
+- [x] Compare our dashboard with save-token and fast-dev.
+- [x] Remove inferred Codex billing-token savings; show only measured local context + provider-reported Jev usage.
+- [x] Add per-tool and recent individual Jev decisions with plain-language labels.
+- [x] Separate skips, native fallbacks, pending/completed restores and restore failures.
+- [x] Count Jev usage for low-reduction skips because provider work already occurred.
+- [x] Re-check current Codex hook-output spill semantics.
+- [x] Disable Codex generic additionalContext spill only for jev-compact restore hooks; retain plugin-level restore cap/modes.
+- [x] Simplify first-time setup and persist provider/key.
+- [x] Copy compiled runtime to a stable location during setup so moving the checkout does not break hooks.
+- [x] Rename keep threshold around its actual semantics: loss threshold, with backward-compatible aliases.
+- [x] Reorganize README for beginner-first setup/usage and separate common vs advanced tuning.
+- [x] Document token-budget interaction and single-install-path rule.
+- [ ] Final bump/build/test/package/Git/ZIP verification.

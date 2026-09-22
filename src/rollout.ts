@@ -3,6 +3,8 @@ import type { Message, Role, ToolCall, ToolResult } from './types.js';
 
 const CALL_TYPES = new Set(['function_call', 'custom_tool_call', 'local_shell_call', 'tool_search_call', 'web_search_call']);
 const OUTPUT_TYPES = new Set(['function_call_output', 'custom_tool_call_output', 'local_shell_call_output', 'tool_search_output', 'web_search_call_output']);
+const KNOWN_IGNORED_RESPONSE_TYPES = new Set(['additional_tools', 'reasoning', 'compaction', 'configuration_update', 'compaction_trigger', 'context_compaction', 'other']);
+const KNOWN_IGNORED_ROLLOUT_TYPES = new Set(['session_meta', 'inter_agent_communication_metadata', 'turn_context', 'token_usage_record', 'world_state', 'retained_context', 'security_risk_score', 'event_msg']);
 
 function record(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
@@ -100,7 +102,10 @@ export function appendResponseItem(messages: Message[], value: unknown): void {
       output: textOf(rawOutput),
       isError: value.is_error === true || status === 'failed' || status === 'error',
     });
+    return;
   }
+  if (KNOWN_IGNORED_RESPONSE_TYPES.has(type)) return;
+  if (type) throw new UnsupportedCodexRolloutError(`unknown Codex response item type: ${type}`);
 }
 
 function payload(row: Record<string, unknown>): Record<string, unknown> | undefined {
@@ -174,7 +179,11 @@ function applyRolloutRow(messages: Message[], row: Record<string, unknown>): voi
     }
     return;
   }
-  if (row.type === 'response_item') appendResponseItem(messages, row.payload);
+  if (row.type === 'response_item') { appendResponseItem(messages, row.payload); return; }
+  if (row.type === 'realtime_item') throw new UnsupportedCodexRolloutError('realtime Codex history cannot be judged by text-only Jev');
+  if (typeof row.type === 'string' && !KNOWN_IGNORED_ROLLOUT_TYPES.has(row.type)) {
+    throw new UnsupportedCodexRolloutError(`unknown Codex rollout item type: ${row.type}`);
+  }
 }
 
 export function parseCodexRollout(jsonl: string): Message[] {

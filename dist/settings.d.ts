@@ -1,0 +1,15 @@
+import { type Env } from './provider.js';
+export type RestoreMode = 'preserve' | 'balanced' | 'minimal';
+export type SettingName = 'restore-mode' | 'restore-max-chars' | 'pin-recent-messages' | 'loss-threshold' | 'min-reduction-ratio';
+export interface UserSettings {
+    restoreMode: RestoreMode;
+    restoreModeWarning?: string;
+    restoreMaxChars: number;
+    pinRecentMessages: number;
+    lossThreshold: number;
+    minReductionRatio: number;
+}
+export declare function settingsPath(env?: Env): string;
+export declare function userSettings(env?: Env): UserSettings;
+export declare function setUserSetting(name: SettingName, rawValue: string, env?: Env): Promise<UserSettings>;
+export declare function resetUserSettings(env?: Env): Promise<void>;

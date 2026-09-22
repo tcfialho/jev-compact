@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { JevClient, noul } from '../dist/provider.js';
+import { JevClient, noul, resolveProvider, resolveApiKey, saveProviderConfiguration } from '../dist/provider.js';
 
 test('OpenRouter uses Decisions endpoint and latest Jev alias', async () => {
   let seen;
@@ -68,6 +68,14 @@ test('provider can resolve API key from a configured key file', async () => {
   assert.equal(auth, 'Bearer file-secret');
 });
 
+test('saved configuration selects provider and key without shell environment variables', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jev-config-'));
+  const env = { JEV_COMPACT_CONFIG_DIR: root };
+  await saveProviderConfiguration('openrouter', 'saved-openrouter-key', env);
+  assert.equal(resolveProvider({ env }), 'openrouter');
+  assert.equal(resolveApiKey('openrouter', { env }), 'saved-openrouter-key');
+});
+
 
 test('provider serializes a shared Jev state once across batches', async () => {
   let serializations = 0;
@@ -100,4 +108,14 @@ test('provider does not cache mutable state serialization unless explicitly enab
   await client.ask(state, { x: { type: 'noul', instructions: 'x' } });
   assert.equal(bodies[0].state.version, 1);
   assert.equal(bodies[1].state.version, 2);
+});
+
+test('generic key-file override follows the saved provider preference', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jev-generic-key-'));
+  const keyFile = join(root, 'generic-key');
+  await writeFile(keyFile, 'generic-openrouter-key\n');
+  const env = { JEV_COMPACT_CONFIG_DIR: root, JEV_COMPACT_KEY_FILE: keyFile };
+  await saveProviderConfiguration('openrouter', 'old-key', env);
+  assert.equal(resolveApiKey('openrouter', { env }), 'generic-openrouter-key');
+  assert.notEqual(resolveApiKey('typesafe', { env }), 'generic-openrouter-key');
 });

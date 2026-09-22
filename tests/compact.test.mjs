@@ -94,3 +94,51 @@ test('fitter supports hundreds of old call-bearing messages after semantic text 
   assert.ok(result.stats.stateTokens <= 24_000);
   assert.match(result.stats.stateStage, /collapsed call markers removed|old messages removed|old calls merged/);
 });
+
+
+test('lossThreshold is the preferred name and keepThreshold remains compatible', async () => {
+  const messages = [
+    { role: 'user', text: 'task', toolCalls: [] },
+    { role: 'assistant', text: '', toolCalls: [{ id: 'c1', name: 'read', input: { path: 'a' } }] },
+    { role: 'tool', text: '', toolCalls: [], toolResults: [{ callId: 'c1', output: 'x'.repeat(1000) }] },
+    { role: 'assistant', text: 'continue', toolCalls: [] },
+  ];
+  const asker = { ask: async (_state, questions) => ({ answers: Object.fromEntries(Object.keys(questions).map((key) => [key, { noul: 0.4 }])) }) };
+  const preferred = await compact(messages, asker, { preserveRecentMessages: 0, lossThreshold: 0.5 });
+  const legacy = await compact(messages, asker, { preserveRecentMessages: 0, keepThreshold: 0.5 });
+  assert.equal(preferred.decisions[0].action, 'drop_call');
+  assert.equal(legacy.decisions[0].action, 'drop_call');
+});
+
+test('truncate decision reports exactly the characters actually removed', async () => {
+  const output = 'x'.repeat(1200);
+  const messages = [
+    { role: 'user', text: 'task', toolCalls: [] },
+    { role: 'assistant', text: '', toolCalls: [{ id: 'c1', name: 'read', input: { path: 'a' } }] },
+    { role: 'tool', text: '', toolCalls: [], toolResults: [{ callId: 'c1', output }] },
+    { role: 'assistant', text: 'continue', toolCalls: [] },
+  ];
+  const result = await compact(messages, { async ask(_state, questions) {
+    return { answers: Object.fromEntries(Object.keys(questions).map((key) => [key, { noul: key.startsWith('drop_') ? 0.9 : 0.1 }])) };
+  } }, { preserveRecentMessages: 0, truncateHeadChars: 300 });
+  const after = result.messages.flatMap((m) => m.toolResults ?? []).find((r) => r.callId === 'c1').output;
+  assert.equal(result.decisions[0].action, 'truncate_result');
+  assert.equal(result.decisions[0].savedChars, output.length - after.length);
+  assert.equal(result.stats.charsBefore - result.stats.charsAfter, result.decisions[0].savedChars);
+});
+
+test('does not claim a truncate when the omission marker would save nothing', async () => {
+  const output = 'x'.repeat(320);
+  const messages = [
+    { role: 'user', text: 'task', toolCalls: [] },
+    { role: 'assistant', text: '', toolCalls: [{ id: 'c1', name: 'read', input: { path: 'a' } }] },
+    { role: 'tool', text: '', toolCalls: [], toolResults: [{ callId: 'c1', output }] },
+    { role: 'assistant', text: 'continue', toolCalls: [] },
+  ];
+  const result = await compact(messages, { async ask(_state, questions) {
+    return { answers: Object.fromEntries(Object.keys(questions).map((key) => [key, { noul: key.startsWith('drop_') ? 0.9 : 0.1 }])) };
+  } }, { preserveRecentMessages: 0, truncateHeadChars: 300 });
+  assert.equal(result.decisions[0].action, 'keep');
+  assert.equal(result.decisions[0].savedChars, 0);
+  assert.equal(result.stats.charsBefore, result.stats.charsAfter);
+});

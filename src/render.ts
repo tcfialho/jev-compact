@@ -46,9 +46,14 @@ export function capContext(text: string, limit: number): string {
     if (next.length === marker.length) { marker = next; break; }
     marker = next;
   }
-  const usable = Math.max(0, limit - marker.length);
+  // Tiny caps can be smaller than the explanatory marker itself. Never let a
+  // zero-length tail turn into `slice(-0) === slice(0)`, which would append
+  // the entire supposedly capped text.
+  if (marker.length >= limit) return marker.slice(0, limit);
+  const usable = limit - marker.length;
   const head = Math.floor(usable * 0.2);
-  return text.slice(0, head) + marker + text.slice(-(usable - head));
+  const tail = usable - head;
+  return text.slice(0, head) + marker + (tail > 0 ? text.slice(-tail) : '');
 }
 
 export function renderIndex(messages: readonly Message[], decisions: readonly CallDecision[], maxChars = 12_000): string {

@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { chmod, mkdir, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { JevAsker, JevQuestions, JevResponse, JevState } from './types.js';
@@ -22,6 +23,40 @@ export interface JevClientOptions {
 const DIRECT_URL = 'https://api.typesafe.ai/v1/systemone';
 const OPENROUTER_URL = 'https://openrouter.ai/api/alpha/decisions';
 
+export function configDir(env: Env = process.env): string {
+  return env.JEV_COMPACT_CONFIG_DIR ?? join(homedir(), '.config', 'jev-compact');
+}
+
+export function defaultKeyPath(provider: Exclude<JevProvider, 'auto'>, env: Env = process.env): string {
+  return join(configDir(env), provider === 'openrouter' ? 'openrouter_api_key' : 'typesafe_api_key');
+}
+
+export function providerPreferencePath(env: Env = process.env): string {
+  return join(configDir(env), 'provider');
+}
+
+function savedProvider(env: Env): Exclude<JevProvider, 'auto'> | undefined {
+  try {
+    const value = String(readFileSync(providerPreferencePath(env), 'utf8')).trim().toLowerCase();
+    return value === 'typesafe' || value === 'openrouter' ? value : undefined;
+  } catch { return undefined; }
+}
+
+export async function saveProviderConfiguration(provider: Exclude<JevProvider, 'auto'>, apiKey: string, env: Env = process.env): Promise<{ keyFile: string; providerFile: string }> {
+  const key = apiKey.trim();
+  if (!key) throw new Error('API key cannot be empty');
+  const dir = configDir(env);
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  try { await chmod(dir, 0o700); } catch {}
+  const keyFile = defaultKeyPath(provider, env);
+  const providerFile = providerPreferencePath(env);
+  await writeFile(keyFile, `${key}\n`, { mode: 0o600 });
+  await writeFile(providerFile, `${provider}\n`, { mode: 0o600 });
+  try { await chmod(keyFile, 0o600); } catch {}
+  try { await chmod(providerFile, 0o600); } catch {}
+  return { keyFile, providerFile };
+}
+
 function readKey(paths: Array<string | undefined>): string {
   for (const path of paths) {
     if (!path) continue;
@@ -36,26 +71,28 @@ function readKey(paths: Array<string | undefined>): string {
 export function resolveApiKey(provider: Exclude<JevProvider, 'auto'>, options: Pick<JevClientOptions, 'apiKey' | 'env'> = {}): string {
   if (options.apiKey) return options.apiKey;
   const env = options.env ?? process.env;
+  const preferred = env.JEV_COMPACT_PROVIDER ?? savedProvider(env);
+  const genericKeyFile = preferred === provider ? env.JEV_COMPACT_KEY_FILE : undefined;
   if (provider === 'openrouter') {
     if (env.OPENROUTER_API_KEY) return env.OPENROUTER_API_KEY;
     return readKey([
       env.OPENROUTER_API_KEY_FILE,
-      env.JEV_COMPACT_PROVIDER === 'openrouter' ? env.JEV_COMPACT_KEY_FILE : undefined,
-      join(homedir(), '.config', 'jev-compact', 'openrouter_api_key'),
+      genericKeyFile,
+      defaultKeyPath('openrouter', env),
     ]);
   }
   if (env.TYPESAFE_API_KEY) return env.TYPESAFE_API_KEY;
   return readKey([
     env.TYPESAFE_API_KEY_FILE,
-    env.JEV_COMPACT_PROVIDER === 'typesafe' ? env.JEV_COMPACT_KEY_FILE : undefined,
-    join(homedir(), '.config', 'jev-compact', 'typesafe_api_key'),
+    genericKeyFile,
+    defaultKeyPath('typesafe', env),
     join(homedir(), '.typesafe_key'),
   ]);
 }
 
 export function resolveProvider(options: Pick<JevClientOptions, 'provider' | 'env' | 'apiKey'> = {}): Exclude<JevProvider, 'auto'> {
   const env = options.env ?? process.env;
-  const requested = options.provider ?? (env.JEV_COMPACT_PROVIDER as JevProvider | undefined) ?? 'auto';
+  const requested = options.provider ?? (env.JEV_COMPACT_PROVIDER as JevProvider | undefined) ?? savedProvider(env) ?? 'auto';
   if (requested === 'typesafe' || requested === 'openrouter') return requested;
   if (options.apiKey) return 'typesafe';
   if (resolveApiKey('typesafe', { env })) return 'typesafe';

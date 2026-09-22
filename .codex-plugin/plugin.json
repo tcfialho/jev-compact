@@ -1,7 +1,7 @@
 {
   "name": "jev-compact",
-  "version": "0.3.0",
-  "description": "Jev-guided verbatim context retention around Codex compaction.",
+  "version": "0.4.0",
+  "description": "Jev-guided retained tool evidence around Codex compaction.",
   "author": {
     "name": "jev-compact contributors"
   },
@@ -16,7 +16,7 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Jev Compact",
-    "shortDescription": "Preserve useful verbatim context across compaction.",
+    "shortDescription": "Preserve useful tool evidence across compaction.",
     "longDescription": "Uses Jev to select useful tool history before Codex compaction and restores it once afterward, with TypeSafe and OpenRouter transports and local metrics.",
     "developerName": "jev-compact contributors",
     "category": "Productivity",

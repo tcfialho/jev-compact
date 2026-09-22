@@ -26,7 +26,7 @@ Current Codex command hooks give `PreCompact` control over continue/stop, not a 
 
 ## Feature comparison after this audit
 
-| Capability | save-token | fast-dev | ours 0.3 | Decision |
+| Capability | save-token | fast-dev | ours 0.4 | Decision |
 |---|---:|---:|---:|---|
 | PreCompact selection | yes | yes | yes | kept |
 | Native Codex compaction remains in control | yes | yes | yes | kept |
@@ -54,14 +54,14 @@ Current Codex command hooks give `PreCompact` control over continue/stop, not a 
 | OpenRouter Decisions API | no | no | yes | added |
 | API-key file fallback | macOS keychain/env | yes | yes | key-file behavior kept, no platform-specific keychain dependency |
 | `PLUGIN_DATA` | yes | plugin-style data | yes | fixed in 0.2 |
-| Exact retained context file | sidecar context | yes | yes | kept |
+| Full retained normalized context file | sidecar context | yes | yes | kept |
 | Structured retained messages file | no | yes | yes | restored in 0.2 |
 | Stale sidecar cleanup | no | 48h | 48h | restored in 0.2 |
 | Stale pending state invalidation on new PreCompact | no | no | yes | prevents an older prepared sidecar being readied by a later compaction |
 | Result head/tail before large reinjection | no | yes | yes | restored in 0.2 |
 | Full restore mode | effectively yes | yes, capped | yes, **default** | base behavior preserved |
 | Index restore mode | no | no | yes, optional | token-first option |
-| Per-tool decision/savings history | yes | limited | yes | restored in 0.2 |
+| Per-tool decision/removal history | yes | limited | yes | restored in 0.2 |
 | Dashboard | rich, auto-start | no | rich, manual | manual intentionally avoids process startup in hook path |
 | Windows hook command | limited | yes | yes | restored in 0.2 |
 | Manual compact + JSON/context outputs | generic CLI | yes | yes | restored in 0.2 |
@@ -82,13 +82,13 @@ Current Codex command hooks give `PreCompact` control over continue/stop, not a 
 
 ### Marketplace placeholder
 
-A local package cannot honestly contain a Git marketplace URL until a real repository exists. The previous `YOUR_ORG` manifest was removed. Direct installation remains `node dist/cli.js install`; a marketplace manifest should be added when the repository is published.
+A local package cannot honestly contain a Git marketplace URL until a real repository exists. The previous `YOUR_ORG` manifest was removed. Downloaded releases use `node dist/cli.js setup` as the normal installation path; `install` remains the current-checkout/development path. A marketplace manifest should be added when the repository is published.
 
 ## Current restore default
 
-During this audit the default was changed back to `full`, capped at 60,000 characters, because that matches the useful behavior of the base compaction plugins: Jev-selected evidence should actually be available to the model after compaction.
+During this audit the default was changed back to preservation-first restore, now named `preserve`, capped at 60,000 characters, because that matches the useful behavior of the base compaction plugins: Jev-selected evidence should actually be available to the model after compaction.
 
-`JEV_COMPACT_RESTORE_MODE=index` remains available for aggressive token reduction. `hybrid` is the middle ground. The exact archive is kept on disk in all modes.
+`JEV_COMPACT_RESTORE_MODE=minimal` remains available for aggressive reduction. `balanced` is the middle ground; legacy `index`/`hybrid` names remain aliases. The exact archive is kept on disk in all modes.
 
 ## Evidence-driven invariants
 
@@ -114,7 +114,7 @@ Changes in this pass:
 - `PostCompact` persistence failure is fail-open because native compaction has already succeeded;
 - archives are written concurrently and `.messages.json` uses compact JSON; the `ready` history row no longer duplicates all Jev decisions;
 - Noul outputs outside `[0,1]`, encrypted function arguments, and image-generation context are rejected/fail-open instead of being silently misinterpreted;
-- hook numeric configuration is bounded and unknown restore modes fall back to preservation-first `full`.
+- hook numeric configuration is bounded and unknown restore modes fall back to preservation-first `preserve`.
 
 Synthetic local measurements on this environment (not provider/network benchmarks):
 
@@ -124,3 +124,60 @@ Synthetic local measurements on this environment (not provider/network benchmark
 - the previous 24k-state-budget synthetic case failed around 400 calls; the revised fitter accepts 600 calls and still rejects 800 when the genuinely minimal Jev state exceeds the configured budget.
 
 These measurements isolate local implementation overhead. They do not claim reductions in TypeSafe/OpenRouter network latency.
+
+## 0.4 usability/dashboard/Codex-compatibility pass — 2026-09-22
+
+Revalidated against current `openai/codex` main during this pass, including hook output spilling, compact lifecycle, plugin placeholder expansion, Windows command execution, and token-budget compaction.
+
+### Dashboard
+
+The previous dashboard inherited the useful shape of `save-token-jev-clean`, but still mixed measured values with derived estimates. The 0.4 dashboard is deliberately stricter:
+
+- shows measured normalized transcript characters before/after **only for retained copies that were actually prepared**;
+- shows complete hook-context characters returned after successful restore and the evidence-only payload separately;
+- uses provider-reported Jev `input_tokens` / `output_tokens` and request count; low-reduction skips are included because Jev already ran and incurred that usage;
+- separates native fallbacks, ordinary skips, pending restores, completed restores, and restore failures;
+- groups exact removed characters by tool and exposes recent individual Keep / Shorten / Remove decisions with Jev loss-risk values;
+- does **not** derive or label `characters / 4` as Codex billing-token savings;
+- remains manual instead of auto-spawning from a compaction hook, so observability does not add a background process to the critical path.
+
+`save-token-jev-clean` remains the inspiration for per-tool/history/decision visibility. `fast-dev-compaction` has no comparable dashboard. The measured-only framing and restore-lifecycle accounting are ours.
+
+### Current Codex `additionalContext` spill
+
+Current Codex applies a generic `additionalContextLimit` to context-producing hooks. When unspecified, the limit is approximately 2,500 tokens; oversized hook output is written to a temporary file and replaced with a bounded head/tail preview plus a recovery path. A value of `0` disables this generic spill.
+
+That behavior matters to jev-compact: a 60,000-character `preserve` restore would otherwise be silently transformed by Codex after our hook returned it. Both packaged hooks and direct-install hooks now set `additionalContextLimit: 0` for `SessionStart` and `UserPromptSubmit` only. jev-compact's own restore mode and `JEV_COMPACT_RESTORE_MAX_CHARS` are therefore the explicit restore-size controls. `PreCompact`/`PostCompact` do not receive this field because they cannot emit additional context.
+
+### Installation
+
+Normal downloaded-release setup is now one command after choosing a provider:
+
+- `jev-compact setup` for TypeSafe;
+- `jev-compact setup openrouter` for OpenRouter.
+
+Setup stores the key/provider in the user config directory, copies the compiled `dist/` runtime to a stable `~/.codex/jev-compact/runtime` location, and installs user-level hooks pointing at that stable copy. Moving/deleting the extracted release directory therefore does not break installed hooks. `install` intentionally remains a current-checkout hook install for development/local linking.
+
+The provider/key files are normalized to restrictive file permissions where supported. `doctor` checks provider/key presence and all four required Codex hook events. Environment variables continue to override saved configuration.
+
+Use one installation path at a time: direct/user-hook setup or a future Codex marketplace plugin install. Running both would make Codex discover two hook sources and can duplicate Jev work even though restore consumption itself is one-shot.
+
+### Option naming
+
+The engine now exposes `lossThreshold` as the preferred library option and `JEV_COMPACT_LOSS_THRESHOLD` as the preferred hook setting. This matches the actual Noul questions: the number is the maximum estimated **loss risk** accepted before DROP/TRUNCATE is rejected. `keepThreshold` / `JEV_COMPACT_KEEP_THRESHOLD` remain compatibility aliases.
+
+Preferred restore mode names are `preserve`, `balanced`, and `minimal`; `full`, `hybrid`, and `index` remain aliases. Common-user documentation is limited to restore mode/cap, recent-message pinning, loss threshold, and minimum reduction. Provider concurrency, request/state budgets, timeout/retry, cleanup and TTL remain advanced controls rather than first-run knobs.
+
+### Token-budget compaction
+
+Current Codex's token-budget implementation intentionally starts a new context window without model/server summarization, but still runs the ordinary `PreCompact` / `PostCompact` lifecycle and queues `SessionStart(source=compact)`. jev-compact therefore also preserves selected evidence around token-budget resets. This is documented explicitly: users who enable token-budget specifically to force a fully clean context should not combine that workflow with jev-compact retention.
+
+### Compatibility invariants reconfirmed
+
+- PreCompact never attempts to rewrite the native Codex compaction request.
+- PostCompact must succeed before a sidecar becomes restore-eligible.
+- SessionStart/UserPromptSubmit restore remains one-shot and stale-safe.
+- Current Codex media/encrypted shapes that text-only Jev cannot inspect fail open.
+- User/developer/system text remains outside destructive Jev decisions.
+- Existing hooks are preserved by the direct installer; only entries tagged `--jev-compact` are replaced/removed.
+- Packaged `${PLUGIN_ROOT}`/`${PLUGIN_DATA}` behavior matches current Codex plugin placeholder expansion; Windows uses Codex's `commandWindows`/`cmd.exe` path.

@@ -1,11 +1,15 @@
-resultado | jev-compact 0.3.0; rodada de correções/performance concluída contra Codex main atual
+resultado | jev-compact 0.4.0; dashboard/instalacao/opcoes/compatibilidade Codex revisados
 
-arquitetura preservada | PreCompact seleciona e salva evidência; Codex compacta nativamente; PostCompact confirma; SessionStart(compact) restaura uma vez. full continua default
+arquitetura | PreCompact seleciona evidência -> Codex compacta nativamente -> PostCompact confirma -> SessionStart(compact) restaura uma vez; UserPromptSubmit é fallback one-shot
 
-0.3 | cache de serialização de estado Jev no caminho immutable; provider/config resolvido uma vez; inputs/perguntas reutilizados; estimator sem match-array; fitter suporta mais calls sem remover semântica; rollout suffix streaming; restore readable-before-claim; history best-effort; archives paralelos/JSON compacto; ready row sem decisões duplicadas; bounds de config e validação Noul
+dashboard | métricas medidas: chars antes/depois da cópia retida, contexto total devolvido pelo hook, payload de evidência, tokens reais reportados pelo Jev, requests/latência, fallback/skip/restore issue, por-tool e decisões recentes; sem chars/4 como suposta economia de billing
 
-bench local | provider 50 batches ~136.6ms -> ~27.1ms; rollout ~20MB ~85.8ms/161.5MB RSS -> ~63.6ms/123.8MB; compactor 300 calls ~35.1ms -> ~23.7ms; 600 calls passam no budget onde 400 antes falhava
+codex atual | additionalContext tem spill default ~2500 tokens; hooks de restore agora usam additionalContextLimit=0 para evitar segundo truncamento invisível e deixar preserve/balanced/minimal + RESTORE_MAX_CHARS controlarem o tamanho real
 
-testes | 43/43; npm pack --dry-run OK; git diff --check limpo
+instalacao | setup salva provider/key, copia dist para ~/.codex/jev-compact/runtime e instala hooks apontando para runtime estável; install continua apontando para checkout atual para desenvolvimento; doctor verifica key + 4 hooks
 
-gaps deliberados | multi-host adapters continuam fora (Codex-first); dashboard manual; marketplace apenas quando houver URL real; proxy de compaction continua opcional/futuro
+opcoes | lossThreshold/JEV_COMPACT_LOSS_THRESHOLD é nome principal; keepThreshold/KEEP_THRESHOLD segue alias; preserve/balanced/minimal são nomes principais; knobs operacionais ficaram avançados
+
+compat | TokenBudget também dispara ciclo compact do Codex e portanto recebe retenção; documentado. Não usar instalação direta e marketplace simultaneamente para evitar hooks duplicados
+
+testes | rodar suite final/release depois do bump 0.4.0

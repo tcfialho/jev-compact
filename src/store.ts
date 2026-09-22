@@ -1,4 +1,4 @@
-import { appendFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { appendFile, chmod, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { CallDecision, CompactStats, Message } from './types.js';
@@ -6,6 +6,7 @@ import type { CallDecision, CompactStats, Message } from './types.js';
 export interface SessionState {
   version: 1;
   sessionId: string;
+  runId?: string;
   turnId?: string;
   trigger?: string;
   model?: string;
@@ -22,15 +23,19 @@ export interface SessionState {
 
 export interface HistoryRow {
   at: string;
+  runId?: string;
   sessionId: string;
   turnId?: string;
   trigger?: string;
   model?: string;
   provider?: string;
+  phase?: 'precompact' | 'postcompact' | 'restore';
   status: 'prepared' | 'ready' | 'restored' | 'skipped' | 'failed';
   stats?: CompactStats;
   decisions?: CallDecision[];
   detail?: string;
+  restoreMode?: 'preserve' | 'balanced' | 'minimal';
+  restoreLimitChars?: number;
   injectedChars?: number;
   injectedPayloadChars?: number;
   retainedChars?: number;
@@ -43,11 +48,20 @@ export function contextPath(sessionId: string, env = process.env): string { retu
 export function messagesPath(sessionId: string, env = process.env): string { return join(dataDir(env), 'sessions', `${safe(sessionId)}.messages.json`); }
 export function historyPath(env = process.env): string { return join(dataDir(env), 'history.jsonl'); }
 
+async function ensurePrivateDir(path: string): Promise<void> {
+  await mkdir(path, { recursive: true, mode: 0o700 });
+  try { await chmod(path, 0o700); } catch {}
+}
+
 async function atomicWrite(path: string, text: string): Promise<void> {
-  await mkdir(dirname(path), { recursive: true });
-  const tmp = `${path}.${process.pid}.tmp`;
-  await writeFile(tmp, text, { mode: 0o600 });
-  await rename(tmp, path);
+  await ensurePrivateDir(dirname(path));
+  const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    await writeFile(tmp, text, { mode: 0o600 });
+    await rename(tmp, path);
+  } finally {
+    try { await rm(tmp, { force: true }); } catch {}
+  }
 }
 
 export async function prepareState(
@@ -79,11 +93,43 @@ export async function discardPendingState(sessionId: string, env = process.env):
   try { await rm(statePath(sessionId, env), { force: true }); } catch {}
 }
 
+function processAlive(pid: number): boolean {
+  if (!Number.isSafeInteger(pid) || pid <= 0) return false;
+  try { process.kill(pid, 0); return true; } catch (error) {
+    const code = error && typeof error === 'object' && 'code' in error ? String((error as { code?: unknown }).code ?? '') : '';
+    return code === 'EPERM';
+  }
+}
+
+async function recoverOrphanClaim(path: string): Promise<void> {
+  let names: string[];
+  try { names = await readdir(dirname(path)); } catch { return; }
+  const base = path.slice(dirname(path).length + 1);
+  const prefix = `${base}.`;
+  for (const name of names) {
+    if (!name.startsWith(prefix) || !name.endsWith('.claim')) continue;
+    const rawPid = name.slice(prefix.length, -'.claim'.length);
+    const pid = Number(rawPid);
+    if (processAlive(pid)) continue;
+    try { await rename(join(dirname(path), name), path); return; } catch {}
+  }
+}
+
 export async function readState(sessionId: string, env = process.env): Promise<SessionState | undefined> {
-  try {
-    const parsed = JSON.parse(await readFile(statePath(sessionId, env), 'utf8')) as SessionState;
-    return parsed?.version === 1 ? parsed : undefined;
-  } catch { return undefined; }
+  const path = statePath(sessionId, env);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const parsed = JSON.parse(await readFile(path, 'utf8')) as SessionState;
+      return parsed?.version === 1 ? parsed : undefined;
+    } catch (error) {
+      if (attempt === 0 && error && typeof error === 'object' && 'code' in error && String((error as { code?: unknown }).code) === 'ENOENT') {
+        await recoverOrphanClaim(path);
+        continue;
+      }
+      return undefined;
+    }
+  }
+  return undefined;
 }
 
 
@@ -108,7 +154,12 @@ export async function markReady(sessionId: string, turnId?: string, env = proces
 export async function claimReady(sessionId: string, ttlMs: number, env = process.env, expectedCreatedAt?: string): Promise<SessionState | undefined> {
   const path = statePath(sessionId, env);
   const claim = `${path}.${process.pid}.claim`;
-  try { await rename(path, claim); } catch { return undefined; }
+  try { await rename(path, claim); }
+  catch (error) {
+    if (!error || typeof error !== 'object' || !('code' in error) || String((error as { code?: unknown }).code) !== 'ENOENT') return undefined;
+    await recoverOrphanClaim(path);
+    try { await rename(path, claim); } catch { return undefined; }
+  }
   let state: SessionState | undefined;
   try {
     const parsed = JSON.parse(await readFile(claim, 'utf8')) as SessionState;
@@ -143,7 +194,7 @@ export async function sweep(env = process.env, maxAgeMs = 48 * 60 * 60 * 1000): 
 
 export async function appendHistory(row: HistoryRow, env = process.env): Promise<void> {
   const path = historyPath(env);
-  await mkdir(dirname(path), { recursive: true });
+  await ensurePrivateDir(dirname(path));
   await appendFile(path, `${JSON.stringify(row)}\n`, { mode: 0o600 });
 }
 

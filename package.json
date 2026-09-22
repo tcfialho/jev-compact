@@ -1,7 +1,7 @@
 {
   "name": "jev-compact",
-  "version": "0.3.0",
-  "description": "Fast Jev-guided verbatim context compaction for Codex with TypeSafe and OpenRouter support.",
+  "version": "0.4.0",
+  "description": "Jev-guided tool-evidence retention around Codex compaction with TypeSafe and OpenRouter support.",
   "type": "module",
   "license": "MIT",
   "engines": {
@@ -27,7 +27,7 @@
     "build": "npm run clean && tsc -p tsconfig.json",
     "test": "npm run build && node --test tests/*.test.mjs",
     "check": "npm run test",
-    "prepare": "npm run build"
+    "prepack": "npm run build"
   },
   "devDependencies": {
     "typescript": "^5.8.3"

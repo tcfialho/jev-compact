@@ -4,7 +4,7 @@ import { mkdtemp, readFile, writeFile, access, utimes, readdir, rm, mkdir } from
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { prepareState, markReady, claimReady, dataDir, messagesPath, statePath, sweep } from '../dist/store.js';
-import { installHooks } from '../dist/install.js';
+import { installHooks, inspectHooks, installRuntime } from '../dist/install.js';
 
 const stats = { messagesBefore: 2, messagesAfter: 1, charsBefore: 1000, charsAfter: 300, calls: 1, kept: 0, resultsTruncated: 0, callsDropped: 1, pinned: 0, stateTokens: 100, stateStage: 'full', requests: 1, jevInputTokens: 0, jevOutputTokens: 0, ms: 5 };
 
@@ -30,7 +30,21 @@ test('installer preserves existing hooks and is idempotent', async () => {
   assert.equal(config.hooks.PreCompact.some((x) => x.hooks.some((h) => h.command === 'echo existing')), true);
   assert.equal(config.hooks.UserPromptSubmit.length, 1);
   assert.match(config.hooks.PreCompact.at(-1).hooks[0].commandWindows, /jev-compact/);
+  assert.equal(config.hooks.SessionStart.at(-1).hooks[0].additionalContextLimit, 0);
+  assert.equal(config.hooks.UserPromptSubmit.at(-1).hooks[0].additionalContextLimit, 0);
   assert.equal((await readdir(root)).filter((name) => name.startsWith('hooks.json.bak.')).length, 1);
+  const inspected = await inspectHooks(env);
+  assert.equal(inspected.installed, true);
+  assert.deepEqual(inspected.events, ['PostCompact', 'PreCompact', 'SessionStart', 'UserPromptSubmit']);
+});
+
+test('installer never overwrites an existing malformed hooks file', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jev-install-invalid-'));
+  const file = join(root, 'hooks.json');
+  const broken = '{ this is not valid json';
+  await writeFile(file, broken);
+  await assert.rejects(installHooks('/repo/jev-compact/dist/cli.js', { CODEX_HOOKS_FILE: file }), /invalid JSON/);
+  assert.equal(await readFile(file, 'utf8'), broken);
 });
 
 import { handleHook } from '../dist/hooks.js';
@@ -48,7 +62,7 @@ test('index restore mode injects compact index once, not full retained archive',
   assert.equal(second.hookSpecificOutput, undefined);
 });
 
-import { renderIndex } from '../dist/render.js';
+import { capContext, renderIndex } from '../dist/render.js';
 
 test('compact index has an internal character budget', () => {
   const messages = [{ role: 'user', text: 'constraint', toolCalls: [], toolResults: Array.from({ length: 50 }, (_, i) => ({ callId: `c${i}`, output: 'x'.repeat(500) })) }];
@@ -56,6 +70,15 @@ test('compact index has an internal character budget', () => {
   const index = renderIndex(messages, decisions, 2000);
   assert.ok(index.length <= 2000);
   assert.match(index, /older retained calls omitted/);
+});
+
+test('context cap is a hard cap even when smaller than the omission marker', () => {
+  const source = 'abcdefghijklmnopqrstuvwxyz'.repeat(100);
+  for (const limit of [1, 5, 16, 40, 80]) {
+    const capped = capContext(source, limit);
+    assert.ok(capped.length <= limit, `limit ${limit} produced ${capped.length} chars`);
+    assert.notEqual(capped, source);
+  }
 });
 
 
@@ -130,6 +153,23 @@ test('unknown restore mode defaults to full instead of silently using aggressive
   assert.match(restored.hookSpecificOutput.additionalContext, /full retained evidence/);
 });
 
+test('preferred restore names and max-char option are accepted', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jev-preferred-options-'));
+  const minimalEnv = { JEV_COMPACT_DATA_DIR: root, JEV_COMPACT_RESTORE_MODE: 'minimal' };
+  await prepareState({ sessionId: 'preferred-minimal', createdAt: new Date().toISOString(), stats, decisions: [], index: 'SMALL PREFERRED INDEX' }, 'x'.repeat(5000), minimalEnv);
+  await markReady('preferred-minimal', undefined, minimalEnv);
+  const minimal = await handleHook({ session_id: 'preferred-minimal', hook_event_name: 'SessionStart', source: 'compact' }, minimalEnv);
+  assert.match(minimal.hookSpecificOutput.additionalContext, /SMALL PREFERRED INDEX/);
+  assert.ok(minimal.hookSpecificOutput.additionalContext.length < 1500);
+
+  const preserveEnv = { JEV_COMPACT_DATA_DIR: root, JEV_COMPACT_RESTORE_MODE: 'preserve', JEV_COMPACT_RESTORE_MAX_CHARS: '900' };
+  await prepareState({ sessionId: 'preferred-preserve', createdAt: new Date().toISOString(), stats, decisions: [], index: 'index' }, 'z'.repeat(5000), preserveEnv);
+  await markReady('preferred-preserve', undefined, preserveEnv);
+  const preserve = await handleHook({ session_id: 'preferred-preserve', hook_event_name: 'SessionStart', source: 'compact' }, preserveEnv);
+  assert.match(preserve.hookSpecificOutput.additionalContext, /chars omitted from middle/);
+  assert.ok(preserve.hookSpecificOutput.additionalContext.length < 1400);
+});
+
 
 test('history logging failure never blocks restore', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jev-history-failure-'));
@@ -141,4 +181,62 @@ test('history logging failure never blocks restore', async () => {
   assert.match(restored.hookSpecificOutput.additionalContext, /retained despite logging failure/);
   const consumed = JSON.parse(await readFile(statePath('history-fail', env), 'utf8'));
   assert.equal(consumed.consumed, true);
+});
+
+
+test('setup runtime copy survives moving the original checkout', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jev-runtime-'));
+  const source = join(root, 'source-dist');
+  await mkdir(source, { recursive: true });
+  await writeFile(join(source, 'cli.js'), 'console.log("runtime")\n');
+  await writeFile(join(source, 'hooks.js'), 'export const ok = true;\n');
+  const env = { JEV_COMPACT_RUNTIME_DIR: join(root, 'stable-runtime') };
+  const cli = await installRuntime(join(source, 'cli.js'), env);
+  assert.equal(await readFile(cli, 'utf8'), 'console.log("runtime")\n');
+  await rm(source, { recursive: true, force: true });
+  assert.equal(await readFile(cli, 'utf8'), 'console.log("runtime")\n');
+});
+
+test('orphaned restore claim is recovered after the claiming process is gone', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jev-orphan-claim-'));
+  const env = { JEV_COMPACT_DATA_DIR: root };
+  await prepareState({ sessionId: 'orphan', createdAt: new Date().toISOString(), stats, decisions: [], index: 'index' }, 'recover me', env);
+  await markReady('orphan', undefined, env);
+  const stateFile = statePath('orphan', env);
+  const claim = `${stateFile}.99999999.claim`;
+  await (await import('node:fs/promises')).rename(stateFile, claim);
+  const recovered = await claimReady('orphan', 60000, env);
+  assert.ok(recovered);
+  assert.equal(recovered.sessionId, 'orphan');
+});
+
+test('setup runtime upgrades atomically to the new compiled copy', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jev-runtime-upgrade-'));
+  const env = { JEV_COMPACT_RUNTIME_DIR: join(root, 'runtime') };
+  const v1 = join(root, 'v1');
+  const v2 = join(root, 'v2');
+  await mkdir(v1, { recursive: true });
+  await mkdir(v2, { recursive: true });
+  await writeFile(join(v1, 'cli.js'), 'v1\n');
+  await writeFile(join(v2, 'cli.js'), 'v2\n');
+  await installRuntime(join(v1, 'cli.js'), env);
+  const stable = await installRuntime(join(v2, 'cli.js'), env);
+  assert.equal(await readFile(stable, 'utf8'), 'v2\n');
+  assert.deepEqual((await readdir(join(root, 'runtime'))).sort(), ['dist']);
+});
+
+test('restore-max-chars is a hard evidence-payload cap in every restore mode', async () => {
+  for (const mode of ['preserve', 'balanced', 'minimal']) {
+    const root = await mkdtemp(join(tmpdir(), `jev-global-cap-${mode}-`));
+    const env = { JEV_COMPACT_DATA_DIR: root, JEV_COMPACT_RESTORE_MODE: mode, JEV_COMPACT_RESTORE_MAX_CHARS: '300' };
+    await prepareState({ sessionId: `global-${mode}`, createdAt: new Date().toISOString(), stats, decisions: [], index: 'I'.repeat(2000) }, 'C'.repeat(5000), env);
+    await markReady(`global-${mode}`, undefined, env);
+    const restored = await handleHook({ session_id: `global-${mode}`, hook_event_name: 'SessionStart', source: 'compact' }, env);
+    const full = restored.hookSpecificOutput.additionalContext;
+    const marker = '\n\nFull retained context:';
+    const payloadStart = full.indexOf('\n\n') + 2;
+    const payloadEnd = full.indexOf(marker, payloadStart);
+    const payload = full.slice(payloadStart, payloadEnd);
+    assert.ok(payload.length <= 300, `${mode} payload was ${payload.length}`);
+  }
 });

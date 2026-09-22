@@ -1,4 +1,4 @@
-import { appendFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { appendFile, chmod, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 function safe(value) { return value.replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 180); }
@@ -7,11 +7,26 @@ export function statePath(sessionId, env = process.env) { return join(dataDir(en
 export function contextPath(sessionId, env = process.env) { return join(dataDir(env), 'sessions', `${safe(sessionId)}.context.txt`); }
 export function messagesPath(sessionId, env = process.env) { return join(dataDir(env), 'sessions', `${safe(sessionId)}.messages.json`); }
 export function historyPath(env = process.env) { return join(dataDir(env), 'history.jsonl'); }
+async function ensurePrivateDir(path) {
+    await mkdir(path, { recursive: true, mode: 0o700 });
+    try {
+        await chmod(path, 0o700);
+    }
+    catch { }
+}
 async function atomicWrite(path, text) {
-    await mkdir(dirname(path), { recursive: true });
-    const tmp = `${path}.${process.pid}.tmp`;
-    await writeFile(tmp, text, { mode: 0o600 });
-    await rename(tmp, path);
+    await ensurePrivateDir(dirname(path));
+    const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
+    try {
+        await writeFile(tmp, text, { mode: 0o600 });
+        await rename(tmp, path);
+    }
+    finally {
+        try {
+            await rm(tmp, { force: true });
+        }
+        catch { }
+    }
 }
 export async function prepareState(state, context, env = process.env, messages) {
     const cp = contextPath(state.sessionId, env);
@@ -39,14 +54,58 @@ export async function discardPendingState(sessionId, env = process.env) {
     }
     catch { }
 }
-export async function readState(sessionId, env = process.env) {
+function processAlive(pid) {
+    if (!Number.isSafeInteger(pid) || pid <= 0)
+        return false;
     try {
-        const parsed = JSON.parse(await readFile(statePath(sessionId, env), 'utf8'));
-        return parsed?.version === 1 ? parsed : undefined;
+        process.kill(pid, 0);
+        return true;
+    }
+    catch (error) {
+        const code = error && typeof error === 'object' && 'code' in error ? String(error.code ?? '') : '';
+        return code === 'EPERM';
+    }
+}
+async function recoverOrphanClaim(path) {
+    let names;
+    try {
+        names = await readdir(dirname(path));
     }
     catch {
-        return undefined;
+        return;
     }
+    const base = path.slice(dirname(path).length + 1);
+    const prefix = `${base}.`;
+    for (const name of names) {
+        if (!name.startsWith(prefix) || !name.endsWith('.claim'))
+            continue;
+        const rawPid = name.slice(prefix.length, -'.claim'.length);
+        const pid = Number(rawPid);
+        if (processAlive(pid))
+            continue;
+        try {
+            await rename(join(dirname(path), name), path);
+            return;
+        }
+        catch { }
+    }
+}
+export async function readState(sessionId, env = process.env) {
+    const path = statePath(sessionId, env);
+    for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+            const parsed = JSON.parse(await readFile(path, 'utf8'));
+            return parsed?.version === 1 ? parsed : undefined;
+        }
+        catch (error) {
+            if (attempt === 0 && error && typeof error === 'object' && 'code' in error && String(error.code) === 'ENOENT') {
+                await recoverOrphanClaim(path);
+                continue;
+            }
+            return undefined;
+        }
+    }
+    return undefined;
 }
 function validReadyState(parsed, ttlMs) {
     const age = Date.now() - Date.parse(parsed.createdAt);
@@ -70,8 +129,16 @@ export async function claimReady(sessionId, ttlMs, env = process.env, expectedCr
     try {
         await rename(path, claim);
     }
-    catch {
-        return undefined;
+    catch (error) {
+        if (!error || typeof error !== 'object' || !('code' in error) || String(error.code) !== 'ENOENT')
+            return undefined;
+        await recoverOrphanClaim(path);
+        try {
+            await rename(path, claim);
+        }
+        catch {
+            return undefined;
+        }
     }
     let state;
     try {
@@ -123,7 +190,7 @@ export async function sweep(env = process.env, maxAgeMs = 48 * 60 * 60 * 1000) {
 }
 export async function appendHistory(row, env = process.env) {
     const path = historyPath(env);
-    await mkdir(dirname(path), { recursive: true });
+    await ensurePrivateDir(dirname(path));
     await appendFile(path, `${JSON.stringify(row)}\n`, { mode: 0o600 });
 }
 /** History is observability only; hook correctness must never depend on this write succeeding. */

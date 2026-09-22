@@ -51,6 +51,7 @@ export interface CallDecision {
     truncateLoss: number;
     action: DecisionAction;
     resultChars: number;
+    originalChars: number;
     savedChars: number;
     pinned: boolean;
 }
@@ -69,6 +70,8 @@ export interface CompactStats {
     requests: number;
     jevInputTokens: number;
     jevOutputTokens: number;
+    /** Number of Jev requests whose response included provider usage counters. */
+    jevUsageReportedRequests?: number;
     ms: number;
 }
 export interface CompactResult {

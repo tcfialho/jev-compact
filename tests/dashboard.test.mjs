@@ -1,0 +1,83 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { appendHistory } from '../dist/store.js';
+import { stats, startDashboard } from '../dist/dashboard.js';
+
+const compactStats = {
+  messagesBefore: 8, messagesAfter: 5, charsBefore: 10000, charsAfter: 4000,
+  calls: 3, kept: 1, resultsTruncated: 1, callsDropped: 1, pinned: 0,
+  stateTokens: 900, stateStage: 'full', requests: 2, jevInputTokens: 1200, jevOutputTokens: 40, ms: 250,
+};
+
+const decisions = [
+  { id: 't1', callId: 'c1', name: 'grep', inputPreview: 'q=x', dropLoss: 0.1, truncateLoss: 0.1, action: 'drop_call', resultChars: 4000, originalChars: 4100, savedChars: 4100, pinned: false },
+  { id: 't2', callId: 'c2', name: 'read', inputPreview: 'a.ts', dropLoss: 0.9, truncateLoss: 0.1, action: 'truncate_result', resultChars: 2200, originalChars: 2250, savedChars: 1900, pinned: false },
+  { id: 't3', callId: 'c3', name: 'test', inputPreview: '', dropLoss: 0.9, truncateLoss: 0.9, action: 'keep', resultChars: 1000, originalChars: 1010, savedChars: 0, pinned: false },
+];
+
+test('dashboard reports measured impact without invented token-savings estimates', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'jev-dashboard-'));
+  const env = { JEV_COMPACT_DATA_DIR: root };
+  const runId = '2026-09-22T12:00:00.000Z';
+  await appendHistory({ at: runId, runId, sessionId: 's1', phase: 'precompact', status: 'prepared', provider: 'typesafe', stats: compactStats, decisions, retainedChars: 4300 }, env);
+  await appendHistory({ at: '2026-09-22T12:00:01.000Z', runId, sessionId: 's1', phase: 'restore', status: 'restored', stats: compactStats, restoreMode: 'balanced', retainedChars: 4300, injectedPayloadChars: 1800, injectedChars: 2100 }, env);
+  await appendHistory({ at: '2026-09-22T12:01:00.000Z', runId: 'skip', sessionId: 's2', phase: 'precompact', status: 'skipped', stats: compactStats }, env);
+  await appendHistory({ at: '2026-09-22T12:02:00.000Z', runId: 'fail', sessionId: 's3', phase: 'precompact', status: 'failed', detail: 'provider unavailable' }, env);
+  await appendHistory({ at: '2026-09-22T12:02:30.000Z', runId: 'prepared-only', sessionId: 's5', phase: 'precompact', status: 'prepared', stats: compactStats, decisions, retainedChars: 4300 }, env);
+
+  const s = await stats(env);
+  assert.equal(s.transcriptCharsRemoved, 12000);
+  assert.equal(s.transcriptReductionRatio, 0.6);
+  assert.equal(s.completedCharsRemoved, 6000);
+  assert.equal(s.completedReductionRatio, 0.6);
+  assert.equal(s.injectedChars, 2100);
+  assert.equal(s.injectedPayloadChars, 1800);
+  // The skipped run still consumed Jev usage, so provider cost is counted twice here.
+  assert.equal(s.jevInputTokens, 3600);
+  assert.equal(s.jevOutputTokens, 120);
+  assert.equal(s.nativeFallbacks, 1);
+  assert.equal(s.skipped, 1);
+  assert.equal(s.byTool[0].tool, 'grep');
+  assert.equal(s.byTool[0].removedChars, 4100); // prepared-only run is not presented as realized tool reduction
+  assert.equal('estimatedPrunedTokens' in s, false);
+
+  const dashboard = await startDashboard(0, env);
+  t.after(() => dashboard.server.close());
+  const html = await fetch(dashboard.url).then((r) => r.text());
+  assert.match(html, /Measured context retention/);
+  assert.match(html, /Retained tool-history reduction/);
+  assert.match(html, /no inferred Codex billing savings/i);
+  assert.doesNotMatch(html, /estimated tokens saved/i);
+  const api = await fetch(`${dashboard.url}api/stats`).then((r) => r.json());
+  assert.equal(api.transcriptCharsRemoved, 12000);
+  assert.equal(api.completedCharsRemoved, 6000);
+  assert.equal(api.settings.restoreMode, 'preserve');
+
+  // Dashboard caches parsed history while the file is unchanged, but an append must invalidate it.
+  await appendHistory({ at: '2026-09-22T12:03:00.000Z', runId: 'fail-2', sessionId: 's4', phase: 'precompact', status: 'failed', detail: 'transcript unavailable' }, env);
+  const refreshed = await fetch(`${dashboard.url}api/stats`).then((r) => r.json());
+  assert.equal(refreshed.nativeFallbacks, 2);
+});
+
+test('dashboard cache invalidates when persisted settings change without new history', async () => {
+  const { mkdtemp } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { startDashboard } = await import('../dist/dashboard.js');
+  const { setUserSetting } = await import('../dist/settings.js');
+  const root = await mkdtemp(join(tmpdir(), 'jev-dashboard-settings-'));
+  const env = { JEV_COMPACT_DATA_DIR: join(root, 'data'), JEV_COMPACT_CONFIG_DIR: join(root, 'config') };
+  const { server, url } = await startDashboard(0, env);
+  try {
+    const before = await fetch(`${url}api/stats`).then((response) => response.json());
+    assert.equal(before.settings.restoreMode, 'preserve');
+    await setUserSetting('restore-mode', 'minimal', env);
+    const after = await fetch(`${url}api/stats`).then((response) => response.json());
+    assert.equal(after.settings.restoreMode, 'minimal');
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
