@@ -26,7 +26,7 @@ Current Codex command hooks give `PreCompact` control over continue/stop, not a 
 
 ## Feature comparison after this audit
 
-| Capability | save-token | fast-dev | ours 0.2 | Decision |
+| Capability | save-token | fast-dev | ours 0.3 | Decision |
 |---|---:|---:|---:|---|
 | PreCompact selection | yes | yes | yes | kept |
 | Native Codex compaction remains in control | yes | yes | yes | kept |
@@ -98,3 +98,29 @@ During this audit the default was changed back to `full`, capped at 60,000 chara
 - Do not mark a sidecar ready until native Codex compaction succeeded.
 - Consume a ready restore at most once.
 - Fall back to native Codex behavior when rollout semantics are known to be unsafe to reconstruct.
+
+
+## 0.3 performance/correctness pass — 2026-09-22
+
+Validated again against current `openai/codex` main hook schema and rollout item shapes. No architectural behavior from the base projects was removed.
+
+Changes in this pass:
+
+- immutable Jev state is serialized once per compaction instead of once per request batch; provider/key/config resolution is cached per client;
+- tool inputs and Jev question objects are built once and reused through fitting/batching; token estimation no longer allocates a regex match array;
+- state fitting removes only already-content-free omission markers before merging old call runs, allowing materially larger call histories to fit without dropping additional semantic text;
+- post-checkpoint rollout parsing is streamed in chunks instead of loading the entire suffix into a second full string; giant cross-chunk records remain supported;
+- history/metrics writes are explicitly best-effort and cannot turn a valid compaction/restore into a functional failure; restore reads the archive before atomically claiming it;
+- `PostCompact` persistence failure is fail-open because native compaction has already succeeded;
+- archives are written concurrently and `.messages.json` uses compact JSON; the `ready` history row no longer duplicates all Jev decisions;
+- Noul outputs outside `[0,1]`, encrypted function arguments, and image-generation context are rejected/fail-open instead of being silently misinterpreted;
+- hook numeric configuration is bounded and unknown restore modes fall back to preservation-first `full`.
+
+Synthetic local measurements on this environment (not provider/network benchmarks):
+
+- 50 repeated Jev batches sharing a large state: local provider serialization/config path ~136.6 ms -> ~27.1 ms with immutable-state caching; request bytes are unchanged;
+- ~20 MB Codex rollout suffix: loader ~85.8 ms / 161.5 MB RSS -> ~63.6 ms / 123.8 MB RSS;
+- 300-call synthetic compactor case: ~35.1 ms baseline -> ~23.7 ms in this pass;
+- the previous 24k-state-budget synthetic case failed around 400 calls; the revised fitter accepts 600 calls and still rejects 800 when the genuinely minimal Jev state exceeds the configured budget.
+
+These measurements isolate local implementation overhead. They do not claim reductions in TypeSafe/OpenRouter network latency.

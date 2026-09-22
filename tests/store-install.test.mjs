@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, writeFile, access, utimes } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, access, utimes, readdir, rm, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { prepareState, markReady, claimReady, dataDir, messagesPath, statePath, sweep } from '../dist/store.js';
@@ -30,6 +30,7 @@ test('installer preserves existing hooks and is idempotent', async () => {
   assert.equal(config.hooks.PreCompact.some((x) => x.hooks.some((h) => h.command === 'echo existing')), true);
   assert.equal(config.hooks.UserPromptSubmit.length, 1);
   assert.match(config.hooks.PreCompact.at(-1).hooks[0].commandWindows, /jev-compact/);
+  assert.equal((await readdir(root)).filter((name) => name.startsWith('hooks.json.bak.')).length, 1);
 });
 
 import { handleHook } from '../dist/hooks.js';
@@ -101,4 +102,43 @@ test('full restore global cap stays within configured character budget', async (
   const injected = restored.hookSpecificOutput.additionalContext;
   assert.match(injected, /chars omitted from middle/);
   assert.ok(injected.length < 1500);
+});
+
+
+test('restore does not consume ready state when retained archive is temporarily unreadable', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jev-restore-retry-'));
+  const env = { JEV_COMPACT_DATA_DIR: root };
+  await prepareState({ sessionId: 'retry', createdAt: new Date().toISOString(), stats, decisions: [], index: 'index' }, 'recoverable context', env);
+  await markReady('retry', undefined, env);
+  const contextFile = join(root, 'sessions', 'retry.context.txt');
+  await rm(contextFile);
+  const first = await handleHook({ session_id: 'retry', hook_event_name: 'SessionStart', source: 'compact' }, env);
+  assert.equal(first.hookSpecificOutput, undefined);
+  const stateAfterFailure = JSON.parse(await readFile(statePath('retry', env), 'utf8'));
+  assert.equal(stateAfterFailure.consumed, false);
+  await writeFile(contextFile, 'recoverable context');
+  const second = await handleHook({ session_id: 'retry', hook_event_name: 'UserPromptSubmit' }, env);
+  assert.match(second.hookSpecificOutput.additionalContext, /recoverable context/);
+});
+
+test('unknown restore mode defaults to full instead of silently using aggressive index mode', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jev-restore-mode-'));
+  const env = { JEV_COMPACT_DATA_DIR: root, JEV_COMPACT_RESTORE_MODE: 'typo' };
+  await prepareState({ sessionId: 'mode', createdAt: new Date().toISOString(), stats, decisions: [], index: 'INDEX ONLY' }, 'full retained evidence', env);
+  await markReady('mode', undefined, env);
+  const restored = await handleHook({ session_id: 'mode', hook_event_name: 'SessionStart', source: 'compact' }, env);
+  assert.match(restored.hookSpecificOutput.additionalContext, /full retained evidence/);
+});
+
+
+test('history logging failure never blocks restore', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jev-history-failure-'));
+  const env = { JEV_COMPACT_DATA_DIR: root };
+  await prepareState({ sessionId: 'history-fail', createdAt: new Date().toISOString(), stats, decisions: [], index: 'index' }, 'retained despite logging failure', env);
+  await markReady('history-fail', undefined, env);
+  await mkdir(join(root, 'history.jsonl')); // appendFile will fail with EISDIR/illegal operation.
+  const restored = await handleHook({ session_id: 'history-fail', hook_event_name: 'SessionStart', source: 'compact' }, env);
+  assert.match(restored.hookSpecificOutput.additionalContext, /retained despite logging failure/);
+  const consumed = JSON.parse(await readFile(statePath('history-fail', env), 'utf8'));
+  assert.equal(consumed.consumed, true);
 });

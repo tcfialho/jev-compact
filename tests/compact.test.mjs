@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { compact, reductionRatio } from '../dist/compact.js';
+import { compact, reductionRatio, estimateTokens } from '../dist/compact.js';
 
 test('drops stale calls and truncates result while preserving text', async () => {
   const long = 'x'.repeat(1200);
@@ -58,4 +58,39 @@ test('conservative ordering keeps full result when truncate-loss is high even if
   assert.equal(result.decisions[0].action, 'keep');
   assert.doesNotMatch(result.decisions[0].inputPreview, /secret-value/);
   assert.match(result.decisions[0].inputPreview, /redacted/);
+});
+
+
+test('allocation-free token estimator matches the previous estimator on JSON-heavy text', () => {
+  const samples = [
+    '', 'hello world', '{"a":123,"b":"x-y_z"}', 'line 1\nline 2\t42',
+    JSON.stringify({ command: 'git diff --stat', path: 'src/a.ts', count: 12345 }),
+  ];
+  const oldEstimate = (text) => {
+    const pieces = text.match(/[A-Za-z]+|\d+|[^\sA-Za-z\d]/g) ?? [];
+    let n = 0;
+    for (const p of pieces) {
+      const c = p.charCodeAt(0);
+      if (c >= 48 && c <= 57) n += p.length / 2;
+      else if ((c >= 65 && c <= 90) || (c >= 97 && c <= 122)) n += 1 + Math.floor((p.length - 1) / 6);
+      else n += 0.9;
+    }
+    return Math.ceil(n);
+  };
+  for (const sample of samples) assert.equal(estimateTokens(sample), oldEstimate(sample));
+});
+
+test('fitter supports hundreds of old call-bearing messages after semantic text is already collapsed', async () => {
+  const messages = [];
+  for (let i = 0; i < 400; i++) {
+    messages.push({ role: 'user', text: `step ${i} ${'x'.repeat(100)}`, toolCalls: [] });
+    messages.push({ role: 'assistant', text: `analysis ${i} ${'y'.repeat(120)}`, toolCalls: [{ id: `c${i}`, name: 'shell', input: { command: `echo ${i} ${'z'.repeat(300)}` } }] });
+    messages.push({ role: 'user', text: '', toolCalls: [], toolResults: [{ callId: `c${i}`, output: `result ${i}\n${'r'.repeat(1200)}` }] });
+  }
+  const result = await compact(messages, { async ask(_state, questions) {
+    return { answers: Object.fromEntries(Object.keys(questions).map((key) => [key, { noul: 0.1 }])) };
+  } }, { maxStateTokens: 24_000, maxRequestTokens: 30_000, preserveRecentMessages: 6 });
+  assert.equal(result.stats.calls, 400);
+  assert.ok(result.stats.stateTokens <= 24_000);
+  assert.match(result.stats.stateStage, /collapsed call markers removed|old messages removed|old calls merged/);
 });

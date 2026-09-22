@@ -1,6 +1,6 @@
 {
   "name": "jev-compact",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Jev-guided verbatim context retention around Codex compaction.",
   "author": {
     "name": "jev-compact contributors"

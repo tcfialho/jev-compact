@@ -25,9 +25,11 @@ export async function prepareState(state, context, env = process.env, messages) 
         ...(mp ? { messagesFile: mp } : {}),
         contextChars: context.length,
     };
-    await atomicWrite(cp, context);
+    const archiveWrites = [atomicWrite(cp, context)];
     if (mp)
-        await atomicWrite(mp, `${JSON.stringify(messages, null, 2)}\n`);
+        archiveWrites.push(atomicWrite(mp, `${JSON.stringify(messages)}\n`));
+    // Publish the state only after both archives are durable; archive writes are independent.
+    await Promise.all(archiveWrites);
     await atomicWrite(statePath(state.sessionId, env), JSON.stringify(full));
     return full;
 }
@@ -46,6 +48,14 @@ export async function readState(sessionId, env = process.env) {
         return undefined;
     }
 }
+function validReadyState(parsed, ttlMs) {
+    const age = Date.now() - Date.parse(parsed.createdAt);
+    return parsed.version === 1 && parsed.ready && !parsed.consumed && Number.isFinite(age) && age >= 0 && age <= ttlMs;
+}
+export async function peekReady(sessionId, ttlMs, env = process.env) {
+    const state = await readState(sessionId, env);
+    return state && validReadyState(state, ttlMs) ? state : undefined;
+}
 export async function markReady(sessionId, turnId, env = process.env) {
     const state = await readState(sessionId, env);
     if (!state || (state.turnId && turnId && state.turnId !== turnId))
@@ -54,7 +64,7 @@ export async function markReady(sessionId, turnId, env = process.env) {
     await atomicWrite(statePath(sessionId, env), JSON.stringify(next));
     return next;
 }
-export async function claimReady(sessionId, ttlMs, env = process.env) {
+export async function claimReady(sessionId, ttlMs, env = process.env, expectedCreatedAt) {
     const path = statePath(sessionId, env);
     const claim = `${path}.${process.pid}.claim`;
     try {
@@ -66,8 +76,7 @@ export async function claimReady(sessionId, ttlMs, env = process.env) {
     let state;
     try {
         const parsed = JSON.parse(await readFile(claim, 'utf8'));
-        const age = Date.now() - Date.parse(parsed.createdAt);
-        if (parsed.version === 1 && parsed.ready && !parsed.consumed && age >= 0 && age <= ttlMs)
+        if (validReadyState(parsed, ttlMs) && (!expectedCreatedAt || parsed.createdAt === expectedCreatedAt))
             state = parsed;
         const next = { ...parsed, consumed: !!state || parsed.consumed };
         await atomicWrite(path, JSON.stringify(next));
@@ -116,6 +125,16 @@ export async function appendHistory(row, env = process.env) {
     const path = historyPath(env);
     await mkdir(dirname(path), { recursive: true });
     await appendFile(path, `${JSON.stringify(row)}\n`, { mode: 0o600 });
+}
+/** History is observability only; hook correctness must never depend on this write succeeding. */
+export async function tryAppendHistory(row, env = process.env) {
+    try {
+        await appendHistory(row, env);
+        return true;
+    }
+    catch {
+        return false;
+    }
 }
 export async function readHistory(env = process.env) {
     try {

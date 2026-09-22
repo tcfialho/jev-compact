@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { JevClient } from '../dist/provider.js';
+import { JevClient, noul } from '../dist/provider.js';
 
 test('OpenRouter uses Decisions endpoint and latest Jev alias', async () => {
   let seen;
@@ -66,4 +66,38 @@ test('provider can resolve API key from a configured key file', async () => {
   });
   await client.ask({}, { x: { type: 'noul', instructions: 'x' } });
   assert.equal(auth, 'Bearer file-secret');
+});
+
+
+test('provider serializes a shared Jev state once across batches', async () => {
+  let serializations = 0;
+  const state = {
+    toJSON() { serializations++; return { history: [{ text: 'x'.repeat(1000) }] }; },
+  };
+  const client = new JevClient({ provider: 'typesafe', apiKey: 'test', retries: 0, cacheStateSerialization: true, fetch: async () => ({
+    ok: true, status: 200, headers: { get: () => null }, text: async () => JSON.stringify({ answers: { x: { noul: 0.5 } } }),
+  }) });
+  await client.ask(state, { x: { type: 'noul', instructions: 'x' } });
+  await client.ask(state, { x: { type: 'noul', instructions: 'x again' } });
+  assert.equal(serializations, 1);
+});
+
+test('Noul rejects probabilities outside the documented 0..1 range', () => {
+  assert.throws(() => noul({ x: { noul: 1.1 } }, 'x'), /Invalid Jev answer/);
+  assert.throws(() => noul({ x: { noul: -0.01 } }, 'x'), /Invalid Jev answer/);
+});
+
+
+test('provider does not cache mutable state serialization unless explicitly enabled', async () => {
+  const bodies = [];
+  const client = new JevClient({ provider: 'typesafe', apiKey: 'test', retries: 0, fetch: async (_url, init) => {
+    bodies.push(JSON.parse(init.body));
+    return { ok: true, status: 200, headers: { get: () => null }, text: async () => JSON.stringify({ answers: { x: { noul: 0.5 } } }) };
+  } });
+  const state = { version: 1 };
+  await client.ask(state, { x: { type: 'noul', instructions: 'x' } });
+  state.version = 2;
+  await client.ask(state, { x: { type: 'noul', instructions: 'x' } });
+  assert.equal(bodies[0].state.version, 1);
+  assert.equal(bodies[1].state.version, 2);
 });

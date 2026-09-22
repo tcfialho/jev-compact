@@ -62,14 +62,17 @@ export function renderIndex(messages: readonly Message[], decisions: readonly Ca
 
   const kept = decisions.filter((d) => d.action !== 'drop_call');
   if (kept.length) lines.push('', `Retained tool history (${kept.length} calls, newest first):`);
+  let renderedChars = lines.join('\n').length;
   let shown = 0;
-  for (const d of [...kept].reverse()) {
+  for (let i = kept.length - 1; i >= 0; i--) {
+    const d = kept[i]!;
     const result = resultById.get(d.callId);
     const preview = result?.output ? result.output.replace(/\s+/g, ' ').slice(0, 180) : '';
     const line = `- ${d.action === 'keep' ? 'KEEP' : 'TRUNC'} ${d.name} ${d.inputPreview} -> ${result?.output.length ?? 0} chars${result?.isError ? ' ERROR' : ''}${preview ? ` | ${preview}` : ''}`;
-    const projected = [...lines, line].join('\n').length;
+    const projected = renderedChars + 1 + line.length;
     if (maxChars > 0 && projected > maxChars) break;
     lines.push(line);
+    renderedChars = projected;
     shown++;
   }
   if (shown < kept.length) lines.push(`- … ${kept.length - shown} older retained calls omitted from this injected index; full retained context is on disk.`);

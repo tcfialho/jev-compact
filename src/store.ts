@@ -32,6 +32,7 @@ export interface HistoryRow {
   decisions?: CallDecision[];
   detail?: string;
   injectedChars?: number;
+  injectedPayloadChars?: number;
   retainedChars?: number;
 }
 
@@ -66,8 +67,10 @@ export async function prepareState(
     ...(mp ? { messagesFile: mp } : {}),
     contextChars: context.length,
   };
-  await atomicWrite(cp, context);
-  if (mp) await atomicWrite(mp, `${JSON.stringify(messages, null, 2)}\n`);
+  const archiveWrites = [atomicWrite(cp, context)];
+  if (mp) archiveWrites.push(atomicWrite(mp, `${JSON.stringify(messages)}\n`));
+  // Publish the state only after both archives are durable; archive writes are independent.
+  await Promise.all(archiveWrites);
   await atomicWrite(statePath(state.sessionId, env), JSON.stringify(full));
   return full;
 }
@@ -83,6 +86,17 @@ export async function readState(sessionId: string, env = process.env): Promise<S
   } catch { return undefined; }
 }
 
+
+function validReadyState(parsed: SessionState, ttlMs: number): boolean {
+  const age = Date.now() - Date.parse(parsed.createdAt);
+  return parsed.version === 1 && parsed.ready && !parsed.consumed && Number.isFinite(age) && age >= 0 && age <= ttlMs;
+}
+
+export async function peekReady(sessionId: string, ttlMs: number, env = process.env): Promise<SessionState | undefined> {
+  const state = await readState(sessionId, env);
+  return state && validReadyState(state, ttlMs) ? state : undefined;
+}
+
 export async function markReady(sessionId: string, turnId?: string, env = process.env): Promise<SessionState | undefined> {
   const state = await readState(sessionId, env);
   if (!state || (state.turnId && turnId && state.turnId !== turnId)) return undefined;
@@ -91,15 +105,14 @@ export async function markReady(sessionId: string, turnId?: string, env = proces
   return next;
 }
 
-export async function claimReady(sessionId: string, ttlMs: number, env = process.env): Promise<SessionState | undefined> {
+export async function claimReady(sessionId: string, ttlMs: number, env = process.env, expectedCreatedAt?: string): Promise<SessionState | undefined> {
   const path = statePath(sessionId, env);
   const claim = `${path}.${process.pid}.claim`;
   try { await rename(path, claim); } catch { return undefined; }
   let state: SessionState | undefined;
   try {
     const parsed = JSON.parse(await readFile(claim, 'utf8')) as SessionState;
-    const age = Date.now() - Date.parse(parsed.createdAt);
-    if (parsed.version === 1 && parsed.ready && !parsed.consumed && age >= 0 && age <= ttlMs) state = parsed;
+    if (validReadyState(parsed, ttlMs) && (!expectedCreatedAt || parsed.createdAt === expectedCreatedAt)) state = parsed;
     const next = { ...parsed, consumed: !!state || parsed.consumed };
     await atomicWrite(path, JSON.stringify(next));
   } catch {
@@ -132,6 +145,11 @@ export async function appendHistory(row: HistoryRow, env = process.env): Promise
   const path = historyPath(env);
   await mkdir(dirname(path), { recursive: true });
   await appendFile(path, `${JSON.stringify(row)}\n`, { mode: 0o600 });
+}
+
+/** History is observability only; hook correctness must never depend on this write succeeding. */
+export async function tryAppendHistory(row: HistoryRow, env = process.env): Promise<boolean> {
+  try { await appendHistory(row, env); return true; } catch { return false; }
 }
 
 export async function readHistory(env = process.env): Promise<HistoryRow[]> {

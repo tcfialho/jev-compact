@@ -4,7 +4,7 @@ import { dirname, join, resolve } from 'node:path';
 
 interface HookEntry { matcher?: string; hooks: Array<Record<string, unknown>> }
 interface HookConfig { description?: string; hooks?: Record<string, HookEntry[]>; [key: string]: unknown }
-const TAG = 'jev-compact';
+const TAG = '--jev-compact';
 
 function unixCommand(cliPath: string): string { return `node ${JSON.stringify(cliPath)} hook --jev-compact`; }
 function windowsCommand(cliPath: string): string { return `node "${cliPath.replace(/"/g, '""')}" hook --jev-compact`; }
@@ -21,8 +21,9 @@ function commandHook(command: string, commandWindows: string, extra: Record<stri
 export async function installHooks(cliPath: string, env = process.env): Promise<string> {
   const path = env.CODEX_HOOKS_FILE ?? join(homedir(), '.codex', 'hooks.json');
   let config: HookConfig = {};
-  try { config = JSON.parse(await readFile(path, 'utf8')) as HookConfig; } catch {}
-  if (await fileExists(path)) await copyFile(path, `${path}.bak.${Date.now()}`);
+  let existed = false;
+  try { config = JSON.parse(await readFile(path, 'utf8')) as HookConfig; existed = true; } catch {}
+  const before = JSON.stringify(config);
   config.hooks ??= {};
   const resolved = resolve(cliPath);
   const command = unixCommand(resolved);
@@ -35,7 +36,9 @@ export async function installHooks(cliPath: string, env = process.env): Promise<
   add('PostCompact', { matcher: 'manual|auto', hooks: [commandHook(command, commandWindows, { timeout: 10 })] });
   add('SessionStart', { matcher: 'compact', hooks: [commandHook(command, commandWindows, { timeout: 10, additionalContextLimit: 65536, statusMessage: 'Restoring Jev-retained context' })] });
   add('UserPromptSubmit', { hooks: [commandHook(command, commandWindows, { timeout: 10, additionalContextLimit: 65536 })] });
+  if (JSON.stringify(config) === before) return path;
   await mkdir(dirname(path), { recursive: true });
+  if (existed) await copyFile(path, `${path}.bak.${Date.now()}`);
   await writeFile(path, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
   return path;
 }
@@ -48,5 +51,3 @@ export async function uninstallHooks(env = process.env): Promise<string> {
   await writeFile(path, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
   return path;
 }
-
-async function fileExists(path: string): Promise<boolean> { try { await readFile(path, 'utf8'); return true; } catch { return false; } }

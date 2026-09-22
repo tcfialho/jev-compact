@@ -8,7 +8,7 @@ function textOf(value) {
     if (typeof value === 'string')
         return value;
     if (Array.isArray(value)) {
-        const text = value.flatMap((item) => record(item) && typeof item.text === 'string' ? [item.text] : []).join('');
+        const text = value.flatMap((item) => record(item) && typeof item.text === 'string' ? [item.text] : []).join('\n');
         if (text)
             return text;
         try {
@@ -88,7 +88,13 @@ export function appendResponseItem(messages, value) {
             messages.push({ role: rawRole, text, toolCalls: [] });
         return;
     }
+    if (type === 'image_generation_call') {
+        throw new UnsupportedCodexRolloutError('image generation context cannot be judged by text-only Jev');
+    }
     if (isCall(value)) {
+        if (Array.isArray(value.encrypted_function_args) && value.encrypted_function_args.length > 0) {
+            throw new UnsupportedCodexRolloutError('encrypted tool arguments cannot be judged by Jev');
+        }
         const id = value.call_id ?? value.id;
         if (typeof id !== 'string' || !id)
             return;
@@ -148,6 +154,40 @@ export class UnsupportedCodexRolloutError extends Error {
         this.name = 'UnsupportedCodexRolloutError';
     }
 }
+function applyRolloutRow(messages, row) {
+    if (isRollback(row))
+        throw new UnsupportedCodexRolloutError('legacy Codex rollback requires native compaction');
+    if (row.type === 'compacted') {
+        const replacement = replacementHistory(row);
+        if (replacement) {
+            messages.length = 0;
+            for (const item of replacement)
+                appendResponseItem(messages, item);
+        }
+        else {
+            applyLegacyCompaction(messages, row);
+        }
+        return;
+    }
+    if (row.type === 'inter_agent_communication') {
+        const communication = payload(row);
+        const content = communication?.content;
+        if (typeof communication?.encrypted_content === 'string' && communication.encrypted_content) {
+            throw new UnsupportedCodexRolloutError('encrypted inter-agent context cannot be judged by Jev');
+        }
+        if (typeof content === 'string' && content) {
+            appendResponseItem(messages, {
+                type: 'agent_message',
+                author: communication?.author,
+                recipient: communication?.recipient,
+                content: [{ text: content }],
+            });
+        }
+        return;
+    }
+    if (row.type === 'response_item')
+        appendResponseItem(messages, row.payload);
+}
 export function parseCodexRollout(jsonl) {
     const messages = [];
     for (const line of jsonl.split(/\r?\n/)) {
@@ -160,40 +200,8 @@ export function parseCodexRollout(jsonl) {
         catch {
             continue;
         }
-        if (!record(row))
-            continue;
-        if (isRollback(row))
-            throw new UnsupportedCodexRolloutError('legacy Codex rollback requires native compaction');
-        if (row.type === 'compacted') {
-            const replacement = replacementHistory(row);
-            if (replacement) {
-                messages.length = 0;
-                for (const item of replacement)
-                    appendResponseItem(messages, item);
-            }
-            else {
-                applyLegacyCompaction(messages, row);
-            }
-            continue;
-        }
-        if (row.type === 'inter_agent_communication') {
-            const communication = payload(row);
-            const content = communication?.content;
-            if (typeof communication?.encrypted_content === 'string' && communication.encrypted_content) {
-                throw new UnsupportedCodexRolloutError('encrypted inter-agent context cannot be judged by Jev');
-            }
-            if (typeof content === 'string' && content) {
-                appendResponseItem(messages, {
-                    type: 'agent_message',
-                    author: communication?.author,
-                    recipient: communication?.recipient,
-                    content: [{ text: content }],
-                });
-            }
-            continue;
-        }
-        if (row.type === 'response_item')
-            appendResponseItem(messages, row.payload);
+        if (record(row))
+            applyRolloutRow(messages, row);
     }
     return messages;
 }
@@ -233,6 +241,47 @@ async function readRange(file, start, length) {
         offset += result.bytesRead;
     }
     return offset === length ? buffer : buffer.subarray(0, offset);
+}
+async function parseForwardRange(file, start, end, chunkBytes) {
+    const messages = [];
+    let position = start;
+    let pending = [];
+    let pendingBytes = 0;
+    const consume = (bytes) => {
+        const row = parseRow(bytes);
+        if (row)
+            applyRolloutRow(messages, row);
+    };
+    while (position < end) {
+        const length = Math.min(Math.max(1, chunkBytes), end - position);
+        const chunk = await readRange(file, position, length);
+        if (!chunk.length)
+            break;
+        let left = 0;
+        while (left < chunk.length) {
+            const newline = chunk.indexOf(0x0a, left);
+            if (newline < 0)
+                break;
+            const part = chunk.subarray(left, newline);
+            if (pending.length) {
+                consume(Buffer.concat([...pending, part], pendingBytes + part.length));
+                pending = [];
+                pendingBytes = 0;
+            }
+            else
+                consume(part);
+            left = newline + 1;
+        }
+        if (left < chunk.length) {
+            const part = chunk.subarray(left);
+            pending.push(part);
+            pendingBytes += part.length;
+        }
+        position += chunk.length;
+    }
+    if (pending.length)
+        consume(pending.length === 1 ? pending[0] : Buffer.concat(pending, pendingBytes));
+    return messages;
 }
 /**
  * Finds the newest safe modern compaction checkpoint without repeatedly copying
@@ -327,7 +376,7 @@ export async function loadCodexRollout(path, chunkBytes = 1024 * 1024) {
             end = start;
         }
         const from = checkpoint ?? 0;
-        return parseCodexRollout((await readRange(file, from, size - from)).toString('utf8'));
+        return await parseForwardRange(file, from, size, chunkBytes);
     }
     finally {
         await file.close();

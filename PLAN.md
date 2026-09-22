@@ -17,3 +17,16 @@
 - [x] Keep compiled `dist/` in Git for zero-build plugin runtime.
 - [ ] Optional future: portable host adapters from save-token if multi-host support becomes a goal.
 - [ ] Optional future: compaction-only Responses proxy; do not replace hook mode.
+
+
+# 0.3 optimization pass
+
+- [x] Re-check current Codex hook lifecycle and ResponseItem shapes.
+- [x] Remove repeated Jev state/config/input/question serialization work.
+- [x] Increase fitter capacity without discarding additional semantic content.
+- [x] Stream post-checkpoint rollout parsing and retain giant-line correctness.
+- [x] Make metrics/history unable to control functional hook success.
+- [x] Make restore readable-before-claim and keep one-shot atomic semantics.
+- [x] Reduce sidecar/history write amplification.
+- [x] Add regressions for provider caching, Noul bounds, encrypted args/media, restore retry and logging failure.
+- [x] Final release validation, Git commit, ZIP/bundle/npm package.

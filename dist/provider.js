@@ -95,10 +95,14 @@ function headerDelay(response) {
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 export class JevClient {
     options;
+    resolved;
+    serializedStates = new WeakMap();
     constructor(options = {}) {
         this.options = options;
     }
-    async ask(state, questions) {
+    config() {
+        if (this.resolved)
+            return this.resolved;
         const env = this.options.env ?? process.env;
         const { provider, apiKey, model, baseUrl: url } = providerConfig(this.options);
         if (!apiKey)
@@ -111,8 +115,22 @@ export class JevClient {
             if (env.OPENROUTER_HTTP_REFERER)
                 headers['http-referer'] = env.OPENROUTER_HTTP_REFERER;
         }
-        const body = JSON.stringify({ model, state, questions });
-        const fetcher = this.options.fetch ?? fetch;
+        return this.resolved = { provider, apiKey, model, url, timeout, retries, headers, fetcher: this.options.fetch ?? fetch };
+    }
+    body(model, state, questions) {
+        let stateJson;
+        if (this.options.cacheStateSerialization)
+            stateJson = this.serializedStates.get(state);
+        if (!stateJson) {
+            stateJson = JSON.stringify(state);
+            if (this.options.cacheStateSerialization)
+                this.serializedStates.set(state, stateJson);
+        }
+        return `{"model":${JSON.stringify(model)},"state":${stateJson},"questions":${JSON.stringify(questions)}}`;
+    }
+    async ask(state, questions) {
+        const { model, url, timeout, retries, headers, fetcher } = this.config();
+        const body = this.body(model, state, questions);
         for (let attempt = 0;; attempt++) {
             let response;
             try {
@@ -133,7 +151,7 @@ export class JevClient {
 }
 export function noul(answers, key) {
     const value = answers[key]?.noul;
-    if (typeof value !== 'number' || !Number.isFinite(value))
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1)
         throw new Error(`Invalid Jev answer for ${key}`);
     return value;
 }

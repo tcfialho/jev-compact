@@ -27,6 +27,7 @@ export interface HistoryRow {
     decisions?: CallDecision[];
     detail?: string;
     injectedChars?: number;
+    injectedPayloadChars?: number;
     retainedChars?: number;
 }
 export declare function dataDir(env?: Record<string, string | undefined>): string;
@@ -37,9 +38,12 @@ export declare function historyPath(env?: Record<string, string | undefined>): s
 export declare function prepareState(state: Omit<SessionState, 'version' | 'ready' | 'consumed' | 'contextFile' | 'contextChars' | 'messagesFile'>, context: string, env?: Record<string, string | undefined>, messages?: readonly Message[]): Promise<SessionState>;
 export declare function discardPendingState(sessionId: string, env?: Record<string, string | undefined>): Promise<void>;
 export declare function readState(sessionId: string, env?: Record<string, string | undefined>): Promise<SessionState | undefined>;
+export declare function peekReady(sessionId: string, ttlMs: number, env?: Record<string, string | undefined>): Promise<SessionState | undefined>;
 export declare function markReady(sessionId: string, turnId?: string, env?: Record<string, string | undefined>): Promise<SessionState | undefined>;
-export declare function claimReady(sessionId: string, ttlMs: number, env?: Record<string, string | undefined>): Promise<SessionState | undefined>;
+export declare function claimReady(sessionId: string, ttlMs: number, env?: Record<string, string | undefined>, expectedCreatedAt?: string): Promise<SessionState | undefined>;
 /** Best-effort cleanup of stale per-session sidecars. History is intentionally retained. */
 export declare function sweep(env?: Record<string, string | undefined>, maxAgeMs?: number): Promise<number>;
 export declare function appendHistory(row: HistoryRow, env?: Record<string, string | undefined>): Promise<void>;
+/** History is observability only; hook correctness must never depend on this write succeeding. */
+export declare function tryAppendHistory(row: HistoryRow, env?: Record<string, string | undefined>): Promise<boolean>;
 export declare function readHistory(env?: Record<string, string | undefined>): Promise<HistoryRow[]>;

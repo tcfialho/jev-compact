@@ -148,3 +148,23 @@ test('non-text tool results fail open instead of being semantically judged blind
   ];
   assert.throws(() => parseCodexRollout(rows.map(JSON.stringify).join('\n')), UnsupportedCodexRolloutError);
 });
+
+
+test('multiple Codex text content items retain their boundary', () => {
+  const rows = [{ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'first' }, { type: 'input_text', text: 'second' }] } }];
+  const result = parseCodexRollout(rows.map(JSON.stringify).join('\n'));
+  assert.equal(result[0].text, 'first\nsecond');
+});
+
+test('encrypted function arguments fail open instead of judging incomplete tool input', () => {
+  const rows = [
+    { type: 'response_item', payload: { type: 'function_call', call_id: 'secret-call', name: 'private_tool', arguments: '{}', encrypted_function_args: ['cipher'] } },
+    { type: 'response_item', payload: { type: 'function_call_output', call_id: 'secret-call', output: 'ok' } },
+  ];
+  assert.throws(() => parseCodexRollout(rows.map(JSON.stringify).join('\n')), UnsupportedCodexRolloutError);
+});
+
+test('image generation context fails open because Jev is text-only', () => {
+  const rows = [{ type: 'response_item', payload: { type: 'image_generation_call', id: 'ig_1', status: 'completed', revised_prompt: 'diagram', result: 'base64-image' } }];
+  assert.throws(() => parseCodexRollout(rows.map(JSON.stringify).join('\n')), UnsupportedCodexRolloutError);
+});

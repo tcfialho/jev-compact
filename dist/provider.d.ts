@@ -10,6 +10,8 @@ export interface JevClientOptions {
     retries?: number;
     fetch?: typeof fetch;
     env?: Env;
+    /** Cache serialization only when callers keep Jev state objects immutable between asks. */
+    cacheStateSerialization?: boolean;
 }
 export declare function resolveApiKey(provider: Exclude<JevProvider, 'auto'>, options?: Pick<JevClientOptions, 'apiKey' | 'env'>): string;
 export declare function resolveProvider(options?: Pick<JevClientOptions, 'provider' | 'env' | 'apiKey'>): Exclude<JevProvider, 'auto'>;
@@ -21,7 +23,11 @@ export declare function providerConfig(options?: JevClientOptions): {
 };
 export declare class JevClient implements JevAsker {
     private readonly options;
+    private resolved?;
+    private readonly serializedStates;
     constructor(options?: JevClientOptions);
+    private config;
+    private body;
     ask(state: JevState, questions: JevQuestions): Promise<JevResponse>;
 }
 export declare function noul(answers: JevResponse['answers'], key: string): number;

@@ -27,16 +27,16 @@ So hook mode preserves exact evidence that a summary may lose. It is not claimin
 
 ## Improvements over the two bases
 
-- Codex-aware `replacement_history` replay and bounded reverse rollout loading;
+- Codex-aware `replacement_history` replay with bounded reverse checkpoint discovery and streaming forward parsing;
 - preserves `developer`, `system`, user and assistant text in Jev-visible state;
 - understands `tool_search_output.tools` and plaintext inter-agent communication;
 - fail-open behavior for legacy rollback, encrypted agent context, and image/audio history that a text-only Jev judgment cannot evaluate correctly;
 - Jev Noul questions directly measure loss from DROP and TRUNCATE;
 - conservative decision precedence matching the base engines: KEEP full result first, then TRUNCATE, then DROP;
-- bounded Jev concurrency, timeout, retry/backoff, `Retry-After`, and measured provider token usage;
+- bounded Jev concurrency, timeout, retry/backoff, `Retry-After`, measured provider token usage, and cached immutable-state serialization across batches;
 - TypeSafe direct **or OpenRouter Decisions API**;
 - environment or key-file credentials;
-- exact `.context.txt` archive plus structured `.messages.json` sidecar; pending sidecars are invalidated at every new `PreCompact` so a failed/skipped attempt cannot be restored later;
+- exact `.context.txt` archive plus compact structured `.messages.json` sidecar; independent archives are written concurrently, then state is published; pending sidecars are invalidated at every new `PreCompact`;
 - `PostCompact` readiness + atomic one-shot restore;
 - stale sidecar cleanup;
 - per-tool savings/decision metrics and optional dashboard;

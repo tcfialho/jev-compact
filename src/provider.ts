@@ -15,6 +15,8 @@ export interface JevClientOptions {
   retries?: number;
   fetch?: typeof fetch;
   env?: Env;
+  /** Cache serialization only when callers keep Jev state objects immutable between asks. */
+  cacheStateSerialization?: boolean;
 }
 
 const DIRECT_URL = 'https://api.typesafe.ai/v1/systemone';
@@ -98,10 +100,25 @@ function headerDelay(response: Response): number | undefined {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+interface ResolvedClient {
+  provider: Exclude<JevProvider, 'auto'>;
+  apiKey: string;
+  model: string;
+  url: string;
+  timeout: number;
+  retries: number;
+  headers: Record<string, string>;
+  fetcher: typeof fetch;
+}
+
 export class JevClient implements JevAsker {
+  private resolved?: ResolvedClient;
+  private readonly serializedStates = new WeakMap<object, string>();
+
   constructor(private readonly options: JevClientOptions = {}) {}
 
-  async ask(state: JevState, questions: JevQuestions): Promise<JevResponse> {
+  private config(): ResolvedClient {
+    if (this.resolved) return this.resolved;
     const env = this.options.env ?? process.env;
     const { provider, apiKey, model, baseUrl: url } = providerConfig(this.options);
     if (!apiKey) throw new Error(provider === 'openrouter' ? 'OPENROUTER_API_KEY is not configured' : 'TYPESAFE_API_KEY is not configured');
@@ -112,8 +129,22 @@ export class JevClient implements JevAsker {
       headers['x-openrouter-title'] = 'jev-compact';
       if (env.OPENROUTER_HTTP_REFERER) headers['http-referer'] = env.OPENROUTER_HTTP_REFERER;
     }
-    const body = JSON.stringify({ model, state, questions });
-    const fetcher = this.options.fetch ?? fetch;
+    return this.resolved = { provider, apiKey, model, url, timeout, retries, headers, fetcher: this.options.fetch ?? fetch };
+  }
+
+  private body(model: string, state: JevState, questions: JevQuestions): string {
+    let stateJson: string | undefined;
+    if (this.options.cacheStateSerialization) stateJson = this.serializedStates.get(state);
+    if (!stateJson) {
+      stateJson = JSON.stringify(state);
+      if (this.options.cacheStateSerialization) this.serializedStates.set(state, stateJson);
+    }
+    return `{"model":${JSON.stringify(model)},"state":${stateJson},"questions":${JSON.stringify(questions)}}`;
+  }
+
+  async ask(state: JevState, questions: JevQuestions): Promise<JevResponse> {
+    const { model, url, timeout, retries, headers, fetcher } = this.config();
+    const body = this.body(model, state, questions);
 
     for (let attempt = 0; ; attempt++) {
       let response: Response;
@@ -133,6 +164,6 @@ export class JevClient implements JevAsker {
 
 export function noul(answers: JevResponse['answers'], key: string): number {
   const value = answers[key]?.noul;
-  if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`Invalid Jev answer for ${key}`);
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) throw new Error(`Invalid Jev answer for ${key}`);
   return value;
 }

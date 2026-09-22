@@ -6,7 +6,7 @@ export async function stats(env = process.env) {
   const prepared = rows.filter((r) => r.status === 'prepared' && r.stats);
   const restored = rows.filter((r) => r.status === 'restored');
   const prunedChars = prepared.reduce((n, r) => n + Math.max(0, (r.stats?.charsBefore ?? 0) - (r.stats?.charsAfter ?? 0)), 0);
-  const avoidedRestoreChars = restored.reduce((n, r) => n + Math.max(0, (r.retainedChars ?? 0) - (r.injectedChars ?? 0)), 0);
+  const avoidedRestoreChars = restored.reduce((n, r) => n + Math.max(0, (r.retainedChars ?? 0) - (r.injectedPayloadChars ?? r.injectedChars ?? 0)), 0);
   const jevInputTokens = prepared.reduce((n, r) => n + (r.stats?.jevInputTokens ?? 0), 0);
   const jevOutputTokens = prepared.reduce((n, r) => n + (r.stats?.jevOutputTokens ?? 0), 0);
   const byTool = new Map<string, { calls: number; savedChars: number; dropped: number; truncated: number }>();
