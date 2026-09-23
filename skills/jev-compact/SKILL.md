@@ -12,7 +12,7 @@ Use this skill when the user asks about the plugin's compaction decisions, retai
 - `PreCompact`: read the Codex rollout, reconstruct model-visible conversation content, score completed tool calls/results with Jev, and write retained sidecars.
 - Codex runs its native compaction unchanged.
 - `PostCompact`: mark the prepared sidecar ready only after compaction succeeds.
-- `SessionStart(source=compact)`: inject the retained index/context once. `UserPromptSubmit` is a recovery fallback if that lifecycle delivery is missed.
+- `SessionStart(source=compact)`: compare retained evidence with the new compacted Codex history and inject only selected evidence still missing verbatim. `UserPromptSubmit` is a recovery fallback if that lifecycle delivery is missed.
 
 Do not claim that hook mode rewrites the native Codex compaction request. It preserves selected tool evidence around native compaction.
 
@@ -22,6 +22,7 @@ Do not claim that hook mode rewrites the native Codex compaction request. It pre
 - `jev-compact setup openrouter` (OpenRouter, first-time setup)
 - `jev-compact doctor`
 - `jev-compact config`
+- `jev-compact config mode observe`
 - `jev-compact config restore-mode balanced`
 - `jev-compact stats --json`
 - `jev-compact dashboard`
@@ -37,6 +38,10 @@ Per-session files include state, a full retained normalized context archive, and
 
 Preferred modes are `preserve` (default), `balanced`, and `minimal`. The restore hooks set Codex `additionalContextLimit` to `0` intentionally so Codex does not apply its own generic hook-output spill on top of jev-compact's restore mode/cap. `JEV_COMPACT_RESTORE_MAX_CHARS` is therefore the plugin-level global cap for the selected evidence payload in all restore modes; mode-specific limits may be smaller.
 
-For normal use, prefer the persistent `jev-compact config` command. The five user-facing controls are `restore-mode`, `restore-max-chars`, `pin-recent-messages`, `loss-threshold`, and `min-reduction-ratio`. Environment variables remain overrides for automation and compatibility.
+For normal use, prefer the persistent `jev-compact config` command. The user-facing controls are `mode`, `restore-mode`, `restore-max-chars`, `pin-recent-messages`, `loss-threshold`, and `min-reduction-ratio`. Environment variables remain overrides for automation and compatibility.
+
+`mode=active` is the default. `mode=observe` still runs Jev and the post-compaction membership analysis, records what would have been restored, but returns no `additionalContext` to Codex. `shadow` is a compatibility alias for `observe`.
+
+Post-compaction dedupe is intentionally exact/conservative: message role+full text must match, and a completed tool pair is considered present only when both exact call and exact result survive. The checkpoint used for membership must be newer than the byte position recorded at `PreCompact`; otherwise restore falls back to the full preservation-first behavior.
 
 The preferred pruning control is `loss-threshold` / `JEV_COMPACT_LOSS_THRESHOLD` (default `0.5`). Higher means more aggressive pruning because a higher Jev-estimated loss risk is accepted. The old `JEV_COMPACT_KEEP_THRESHOLD` name remains an alias.

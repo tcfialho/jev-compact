@@ -8,9 +8,9 @@ You do not need to understand Jev to use it. In simple terms:
 - Before Codex compacts that history, `jev-compact` asks Jev which completed tool calls/results still matter.
 - Useful evidence is kept; stale tool history can be shortened or removed from the retained copy.
 - Codex performs its normal/native compaction.
-- After compaction, `jev-compact` adds the selected evidence back once.
+- After compaction, `jev-compact` checks what survived **verbatim** in Codex's new history and adds back only selected evidence that is still missing.
 
-User, developer and system text is never selected for deletion by Jev.
+User, developer and system text is never selected for deletion by Jev. Exact copies may be omitted from the **extra reinjection** when Codex already preserved the same text verbatim; the retained archive on disk is unchanged.
 
 ## Quick setup
 
@@ -88,7 +88,9 @@ PostCompact confirms success
     ↓
 SessionStart(source=compact)
     ↓
-selected evidence is restored once
+exact post-compaction membership check
+    ↓
+only selected evidence still missing is restored once
 ```
 
 `UserPromptSubmit` is a recovery path if the compact `SessionStart` delivery is missed.
@@ -113,6 +115,8 @@ The dashboard shows values that `jev-compact` can actually measure:
 
 - characters present before and after Jev selection;
 - exact characters removed from retained tool history;
+- how much Jev-selected evidence was already present verbatim after native Codex compaction, so `jev-compact` did not duplicate it;
+- how much selected evidence was still missing and eligible for restore;
 - the complete hook context actually returned to Codex after compaction, plus the evidence-only portion;
 - real Jev input/output token usage when the provider returns usage counters, including how many Jev requests reported them;
 - Jev request count and selection time;
@@ -120,6 +124,7 @@ The dashboard shows values that `jev-compact` can actually measure:
 - removed retained-context characters grouped by tool;
 - recent Keep / Shorten / Remove decisions and their Jev loss-risk values;
 - recent compaction runs and which restore mode they used.
+- observe-mode runs, including what would have been restored while Codex context remained unchanged.
 
 It deliberately **does not claim Codex billing-token savings** from a `characters ÷ 4` estimate. Hook mode cannot observe Codex's final billing tokenizer/cache accounting, so the dashboard keeps those numbers separate from what is actually measured.
 
@@ -134,6 +139,44 @@ Machine-readable output:
 ```bash
 node dist/cli.js stats --json
 ```
+
+## Observe mode
+
+If you want to measure `jev-compact` on your own Codex sessions before allowing it to add context back, use:
+
+```bash
+node dist/cli.js config mode observe
+```
+
+In `observe` mode the real Jev selection still runs at `PreCompact`, and after native compaction `jev-compact` performs the same exact membership/dedupe analysis it would use in active mode. It records:
+
+- what Jev selected;
+- whether the configured minimum reduction would have allowed a restore;
+- how much selected evidence already survived native Codex compaction verbatim;
+- how much was still missing;
+- how much evidence/context would have been returned after the configured restore mode and caps;
+- real Jev request/token/latency metrics when available.
+
+But it returns **no `additionalContext`** to Codex. Native Codex context is therefore unchanged by `jev-compact`; the trade-off is that you still pay the Jev request cost and wait for its selection during compaction.
+
+Return to normal behavior with:
+
+```bash
+node dist/cli.js config mode active
+```
+
+`shadow` remains accepted as an environment/config alias for `observe`, but `observe` is the preferred user-facing name.
+
+### Why post-compaction dedupe is conservative
+
+The optimization does not ask another model whether two pieces of text are "basically the same". It only suppresses extra reinjection when there is objective evidence in the new Codex history:
+
+- a normal message must match the same role and full text exactly;
+- a completed tool pair is considered already present only when both the exact call and exact result survive;
+- result content uses a full-content hash, not a matching prefix;
+- the post-compaction rollout must contain a modern checkpoint appended at or after the byte position captured by `PreCompact`.
+
+If the transcript is stale, missing, unsupported, or ambiguous, dedupe is disabled for that restore and `jev-compact` falls back to the previous preservation-first behavior. In other words, a failed membership check can cause duplicate context, but it must not cause retained evidence to disappear.
 
 ## Restore modes
 
@@ -173,10 +216,11 @@ Legacy values `full`, `hybrid` and `index` are still accepted as aliases for `pr
 
 ## Options most users may care about
 
-Defaults are preservation-first. You can change the five user-facing settings without editing shell files; this matters when Codex is launched from a desktop app.
+Defaults are preservation-first. You can change the user-facing settings without editing shell files; this matters when Codex is launched from a desktop app.
 
 ```bash
 node dist/cli.js config
+node dist/cli.js config mode observe
 node dist/cli.js config restore-mode balanced
 node dist/cli.js config restore-max-chars 40000
 node dist/cli.js config pin-recent-messages 8
@@ -186,6 +230,7 @@ node dist/cli.js config min-reduction-ratio 0.20
 
 | Setting | Default | Plain meaning | If you increase it |
 | --- | ---: | --- | --- |
+| `mode` | `active` | `active` restores selected evidence; `observe` runs the same analysis and records what would happen without injecting context. | Named mode, not a number. Use `observe` to validate behavior safely. |
 | `restore-mode` | `preserve` | How much selected evidence is put back after compaction. | This is a named mode, not a number: `balanced` and `minimal` inject less. |
 | `restore-max-chars` | `60000` | Hard character cap for the evidence payload in **every** restore mode, before the recovery header/path. `0` disables this global cap; mode-specific limits and the per-result anti-crowding safeguard still apply. | More selected old evidence can return to the model. |
 | `pin-recent-messages` | `6` | Newest normalized messages Jev is not allowed to prune. | Safer/more conservative; less history becomes removable. |
@@ -194,7 +239,7 @@ node dist/cli.js config min-reduction-ratio 0.20
 
 `loss-threshold` is deliberately named around what Jev answers: **risk of losing still-needed information**. If you are unsure, leave it at `0.5`; the dashboard exposes the actual decision scores.
 
-Saved settings live under `~/.config/jev-compact/settings.json`. Environment variables still override saved settings for automation and compatibility: `JEV_COMPACT_RESTORE_MODE`, `JEV_COMPACT_RESTORE_MAX_CHARS`, `JEV_COMPACT_PIN_RECENT_MESSAGES`, `JEV_COMPACT_LOSS_THRESHOLD`, and `JEV_COMPACT_MIN_REDUCTION_RATIO`. Legacy aliases remain accepted.
+Saved settings live under `~/.config/jev-compact/settings.json`. Environment variables still override saved settings for automation and compatibility: `JEV_COMPACT_MODE`, `JEV_COMPACT_RESTORE_MODE`, `JEV_COMPACT_RESTORE_MAX_CHARS`, `JEV_COMPACT_PIN_RECENT_MESSAGES`, `JEV_COMPACT_LOSS_THRESHOLD`, and `JEV_COMPACT_MIN_REDUCTION_RATIO`. Legacy aliases remain accepted.
 
 ## Advanced options
 
@@ -256,6 +301,7 @@ The command writes the retained context/JSON and prints compaction statistics to
 - It does **not** replace Codex's native compaction request in hook mode.
 - It does **not** invent exact Codex token/billing savings from character counts.
 - It does **not** select user/developer/system text for deletion.
+- Its post-compaction dedupe does **not** use semantic similarity. Anything not proven present verbatim is preserved for reinjection.
 - It does **not** semantically judge context it cannot safely read. Encrypted agent content, image/audio content and unsupported history shapes fail open to native Codex behavior.
 - It does **not** require a background dashboard process; metrics are always recorded locally and the dashboard is started only when requested.
 
@@ -297,5 +343,7 @@ Independent implementation informed by the MIT-licensed:
 - `IAmUnbounded/save-token-jev-clean`
 - `leonaaardob/fast-dev-compaction`
 - `tamaratran/fast-jev-compaction`
+- `fatelei/jev-compact` (post-compaction membership/backfill idea)
+- `GhalebDweikat/winnow` (observe/shadow-mode methodology)
 
 See `AUDIT.md` for the detailed behavior comparison and Codex compatibility notes.

@@ -151,6 +151,14 @@ export class UnsupportedCodexRolloutError extends Error {
   }
 }
 
+export interface CodexRolloutSnapshot {
+  messages: Message[];
+  /** File size observed while loading this snapshot. */
+  fileBytes: number;
+  /** Byte offset of the newest bounded modern `compacted` checkpoint, when one was used. */
+  checkpointOffset?: number;
+}
+
 function applyRolloutRow(messages: Message[], row: Record<string, unknown>): void {
   if (isRollback(row)) throw new UnsupportedCodexRolloutError('legacy Codex rollback requires native compaction');
   if (row.type === 'compacted') {
@@ -272,7 +280,7 @@ async function parseForwardRange(file: Awaited<ReturnType<typeof open>>, start: 
  * a giant JSONL record that crosses many read chunks. A crossing line is kept
  * as buffer fragments and concatenated only once, when its leading newline is found.
  */
-export async function loadCodexRollout(path: string, chunkBytes = 1024 * 1024): Promise<Message[]> {
+export async function loadCodexRolloutSnapshot(path: string, chunkBytes = 1024 * 1024): Promise<CodexRolloutSnapshot> {
   const file = await open(path, 'r');
   try {
     const size = Number((await file.stat()).size);
@@ -354,8 +362,16 @@ export async function loadCodexRollout(path: string, chunkBytes = 1024 * 1024): 
     }
 
     const from = checkpoint ?? 0;
-    return await parseForwardRange(file, from, size, chunkBytes);
+    return {
+      messages: await parseForwardRange(file, from, size, chunkBytes),
+      fileBytes: size,
+      ...(checkpoint !== undefined ? { checkpointOffset: checkpoint } : {}),
+    };
   } finally {
     await file.close();
   }
+}
+
+export async function loadCodexRollout(path: string, chunkBytes = 1024 * 1024): Promise<Message[]> {
+  return (await loadCodexRolloutSnapshot(path, chunkBytes)).messages;
 }

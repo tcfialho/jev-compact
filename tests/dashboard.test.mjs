@@ -27,6 +27,7 @@ test('dashboard reports measured impact without invented token-savings estimates
   await appendHistory({ at: '2026-09-22T12:01:00.000Z', runId: 'skip', sessionId: 's2', phase: 'precompact', status: 'skipped', stats: compactStats }, env);
   await appendHistory({ at: '2026-09-22T12:02:00.000Z', runId: 'fail', sessionId: 's3', phase: 'precompact', status: 'failed', detail: 'provider unavailable' }, env);
   await appendHistory({ at: '2026-09-22T12:02:30.000Z', runId: 'prepared-only', sessionId: 's5', phase: 'precompact', status: 'prepared', stats: compactStats, decisions, retainedChars: 4300 }, env);
+  await appendHistory({ at: '2026-09-22T12:02:45.000Z', runId: 'observe-only', sessionId: 's6', phase: 'restore', status: 'observed', operationMode: 'observe', wouldApply: true, stats: compactStats, retainedChars: 4300, nativePresentChars: 1200, restoreCandidateChars: 3100, wouldInjectPayloadChars: 1700, wouldInjectChars: 2050, membershipStatus: 'verified' }, env);
 
   const s = await stats(env);
   assert.equal(s.transcriptCharsRemoved, 12000);
@@ -40,6 +41,9 @@ test('dashboard reports measured impact without invented token-savings estimates
   assert.equal(s.jevOutputTokens, 120);
   assert.equal(s.nativeFallbacks, 1);
   assert.equal(s.skipped, 1);
+  assert.equal(s.observed, 1);
+  assert.equal(s.wouldInjectPayloadChars, 1700);
+  assert.equal(s.observedNativePresentChars, 1200);
   assert.equal(s.byTool[0].tool, 'grep');
   assert.equal(s.byTool[0].removedChars, 4100); // prepared-only run is not presented as realized tool reduction
   assert.equal('estimatedPrunedTokens' in s, false);
@@ -49,8 +53,13 @@ test('dashboard reports measured impact without invented token-savings estimates
   const html = await fetch(dashboard.url).then((r) => r.text());
   assert.match(html, /Measured context retention/);
   assert.match(html, /Retained tool-history reduction/);
+  assert.match(html, /Duplicate restore avoided/);
+  assert.match(html, /Observe mode/);
   assert.match(html, /no inferred Codex billing savings/i);
   assert.doesNotMatch(html, /estimated tokens saved/i);
+  const health = await fetch(`${dashboard.url}api/health`).then((r) => r.json());
+  assert.equal(health.service, 'jev-compact-dashboard');
+  assert.equal(health.pid, process.pid);
   const api = await fetch(`${dashboard.url}api/stats`).then((r) => r.json());
   assert.equal(api.transcriptCharsRemoved, 12000);
   assert.equal(api.completedCharsRemoved, 6000);

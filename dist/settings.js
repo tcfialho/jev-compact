@@ -9,12 +9,14 @@ function sanitizeSavedSettings(value) {
     if (!value || typeof value !== 'object' || Array.isArray(value))
         return {};
     const record = value;
+    const mode = typeof record.mode === 'string' ? normalizedOperationMode(record.mode) : undefined;
     const restoreMode = typeof record.restoreMode === 'string' ? normalizedMode(record.restoreMode) : undefined;
     const restoreMaxChars = finiteNumber(record.restoreMaxChars);
     const pinRecentMessages = finiteNumber(record.pinRecentMessages);
     const lossThreshold = finiteNumber(record.lossThreshold);
     const minReductionRatio = finiteNumber(record.minReductionRatio);
     return {
+        ...(mode ? { mode } : {}),
         ...(restoreMode ? { restoreMode } : {}),
         ...(restoreMaxChars !== undefined && restoreMaxChars >= 0 ? { restoreMaxChars: Math.floor(restoreMaxChars) } : {}),
         ...(pinRecentMessages !== undefined && pinRecentMessages >= 0 ? { pinRecentMessages: Math.floor(pinRecentMessages) } : {}),
@@ -54,11 +56,20 @@ function normalizedMode(value) {
         return 'minimal';
     return undefined;
 }
+function normalizedOperationMode(value) {
+    const v = (value ?? '').trim().toLowerCase();
+    if (v === 'active' || v === 'on')
+        return 'active';
+    if (v === 'observe' || v === 'shadow')
+        return 'observe';
+    return undefined;
+}
 export function userSettings(env = process.env) {
     const stored = saved(env);
+    const operationMode = normalizedOperationMode(env.JEV_COMPACT_MODE) ?? stored.mode ?? 'active';
     const rawMode = env.JEV_COMPACT_RESTORE_MODE;
     const modeFromEnv = normalizedMode(rawMode);
-    const mode = modeFromEnv ?? stored.restoreMode ?? 'preserve';
+    const restoreMode = modeFromEnv ?? stored.restoreMode ?? 'preserve';
     const rawModeNormalized = (rawMode ?? '').trim().toLowerCase();
     const restoreModeWarning = rawMode !== undefined && rawModeNormalized !== '' && !modeFromEnv
         ? `unknown restore mode ${JSON.stringify(rawModeNormalized)}; using ${stored.restoreMode ?? 'preserve'}`
@@ -68,7 +79,8 @@ export function userSettings(env = process.env) {
     const loss = envNumber(env, ['JEV_COMPACT_LOSS_THRESHOLD', 'JEV_COMPACT_KEEP_THRESHOLD']) ?? stored.lossThreshold ?? 0.5;
     const minReduction = envNumber(env, ['JEV_COMPACT_MIN_REDUCTION_RATIO', 'JEV_COMPACT_MIN_REDUCTION']) ?? stored.minReductionRatio ?? 0.15;
     return {
-        restoreMode: mode,
+        mode: operationMode,
+        restoreMode,
         restoreModeWarning,
         restoreMaxChars: Math.max(0, Math.floor(restoreMax)),
         pinRecentMessages: Math.max(0, Math.floor(pinRecent)),
@@ -78,7 +90,13 @@ export function userSettings(env = process.env) {
 }
 export async function setUserSetting(name, rawValue, env = process.env) {
     const current = saved(env);
-    if (name === 'restore-mode') {
+    if (name === 'mode') {
+        const mode = normalizedOperationMode(rawValue);
+        if (!mode)
+            throw new Error('mode must be active or observe');
+        current.mode = mode;
+    }
+    else if (name === 'restore-mode') {
         const mode = normalizedMode(rawValue);
         if (!mode)
             throw new Error('restore-mode must be preserve, balanced, or minimal');

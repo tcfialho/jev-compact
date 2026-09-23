@@ -69,6 +69,8 @@ Current Codex command hooks give `PreCompact` control over continue/stop, not a 
 | Valid plugin author metadata | yes | yes | yes | fixed in 0.2 |
 | Marketplace manifest | repo-specific URL | valid published URL | omitted until a real repository URL exists | avoids shipping a fake `YOUR_ORG` URL |
 | Claude/OpenCode/OpenAI generic adapters | yes | no | no | intentionally out of Codex-focused runtime scope |
+| Exact post-compaction membership/dedupe before restore | no | no | yes (0.5) | avoids reinjecting selected evidence already present verbatim |
+| Observe/shadow mode with no context mutation | no | no | yes (0.5) | measures real selection + dedupe without returning additionalContext |
 
 ## Deliberate non-copies
 
@@ -181,3 +183,42 @@ Current Codex's token-budget implementation intentionally starts a new context w
 - User/developer/system text remains outside destructive Jev decisions.
 - Existing hooks are preserved by the direct installer; only entries tagged `--jev-compact` are replaced/removed.
 - Packaged `${PLUGIN_ROOT}`/`${PLUGIN_DATA}` behavior matches current Codex plugin placeholder expansion; Windows uses Codex's `commandWindows`/`cmd.exe` path.
+
+
+## 0.5 post-compaction dedupe / observe pass — 2026-09-23
+
+Two ideas were evaluated against the current Codex lifecycle and implemented only where the host contract provides objective evidence.
+
+### Exact post-compaction membership
+
+`PreCompact` now records the transcript path and exact rollout byte length seen while Jev scores the live history. After native compaction, restore reloads the Codex rollout and enables dedupe only when the newest bounded modern `compacted` checkpoint begins at or after that recorded byte position. Current Codex persists the replacement-history checkpoint before queueing `SessionStart(source=compact)`, which makes this check compatible with the host lifecycle.
+
+Dedupe is deliberately more conservative than prefix/fuzzy matching:
+
+- ordinary text is suppressible only when the same role and full text survive verbatim;
+- paired tool evidence is suppressible only when both the exact call (canonical input) and exact result survive under the same call id;
+- tool-result equality uses length + full SHA-256 content hash; a matching prefix is insufficient;
+- if the checkpoint is stale, absent, on a different rollout path, unsupported, or cannot be parsed, the previous full restore behavior is used.
+
+The retained archive is never mutated. Dedupe changes only the extra context returned after compaction. This makes false negatives cheap (some duplicate text) and avoids dangerous false positives (silently withholding evidence that native compaction actually lost).
+
+### Observe mode
+
+`mode=observe` runs the same real Jev selection at `PreCompact`, persists the same retained archive, waits for successful native compaction, and performs the same post-compaction membership analysis. It then records the hypothetical payload/context size but returns no `additionalContext` to Codex.
+
+Observe therefore changes compaction latency/provider usage but not model context. It is useful for validating the plugin on real sessions before enabling active restoration. `shadow` is accepted as an alias, but `observe` is the documented user-facing term.
+
+Observe also prepares a sidecar when the measured reduction is below `min-reduction-ratio`, marking `wouldApply=false`, so the dashboard can report that active mode would have skipped the restore without changing Codex behavior.
+
+### New measured fields
+
+History/dashboard now distinguish:
+
+- retained evidence selected by Jev;
+- exact retained characters already present after native compaction;
+- retained characters still missing and restore-eligible;
+- actual injected payload/context in active mode;
+- hypothetical injected payload/context in observe mode;
+- whether membership was verified, stale, or unavailable.
+
+These remain character measurements of the normalized/plugin payloads, not claims about Codex billing-token savings.
