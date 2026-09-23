@@ -10,6 +10,10 @@ export interface SessionState {
   turnId?: string;
   trigger?: string;
   model?: string;
+  operationMode?: 'active' | 'observe';
+  wouldApply?: boolean;
+  transcriptPath?: string;
+  transcriptBytesAtScore?: number;
   createdAt: string;
   ready: boolean;
   consumed: boolean;
@@ -29,8 +33,10 @@ export interface HistoryRow {
   trigger?: string;
   model?: string;
   provider?: string;
+  operationMode?: 'active' | 'observe';
+  wouldApply?: boolean;
   phase?: 'precompact' | 'postcompact' | 'restore';
-  status: 'prepared' | 'ready' | 'restored' | 'skipped' | 'failed';
+  status: 'prepared' | 'ready' | 'restored' | 'observed' | 'skipped' | 'failed';
   stats?: CompactStats;
   decisions?: CallDecision[];
   detail?: string;
@@ -39,6 +45,16 @@ export interface HistoryRow {
   injectedChars?: number;
   injectedPayloadChars?: number;
   retainedChars?: number;
+  /** Retained normalized characters proven to already exist after native compaction. */
+  nativePresentChars?: number;
+  /** Retained normalized characters still missing after exact post-compaction membership checks. */
+  restoreCandidateChars?: number;
+  membershipStatus?: 'verified' | 'unavailable' | 'stale';
+  dedupedTextItems?: number;
+  dedupedToolPairs?: number;
+  /** Hypothetical values populated by observe mode; nothing was actually injected. */
+  wouldInjectChars?: number;
+  wouldInjectPayloadChars?: number;
 }
 
 function safe(value: string): string { return value.replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 180); }

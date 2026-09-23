@@ -20,7 +20,7 @@ interface RunSummary {
   trigger?: string;
   model?: string;
   provider?: string;
-  status: 'prepared' | 'ready' | 'restored' | 'skipped' | 'failed' | 'restore_failed';
+  status: 'prepared' | 'ready' | 'restored' | 'observed' | 'skipped' | 'failed' | 'restore_failed';
   reductionRatio: number;
   charsBefore: number;
   charsAfter: number;
@@ -36,8 +36,13 @@ interface RunSummary {
   jevUsageReportedRequests: number;
   selectionMs: number;
   restoreMode?: string;
+  operationMode?: string;
   injectedPayloadChars?: number;
+  wouldInjectPayloadChars?: number;
   retainedChars?: number;
+  nativePresentChars?: number;
+  restoreCandidateChars?: number;
+  membershipStatus?: string;
   detail?: string;
 }
 
@@ -62,6 +67,7 @@ export async function stats(env = process.env) {
   const restoreFailures = rows.filter((r) => r.status === 'failed' && r.phase === 'restore');
   const ready = rows.filter((r) => r.status === 'ready' && r.stats);
   const restored = rows.filter((r) => r.status === 'restored' && r.stats);
+  const observed = rows.filter((r) => r.status === 'observed' && r.stats);
   const restoredRunKeys = new Set(restored.map(runKey));
   const completedPrepared = prepared.filter((r) => restoredRunKeys.has(runKey(r)));
 
@@ -76,6 +82,13 @@ export async function stats(env = process.env) {
   const injectedPayloadChars = restored.reduce((n, r) => n + positive(r.injectedPayloadChars), 0);
   const restoreEligibleChars = restored.reduce((n, r) => n + positive(r.retainedChars), 0);
   const restoreCharsNotInjected = Math.max(0, restoreEligibleChars - injectedPayloadChars);
+  const nativePresentChars = restored.reduce((n, r) => n + positive(r.nativePresentChars), 0);
+  const restoreCandidateChars = restored.reduce((n, r) => n + positive(r.restoreCandidateChars), 0);
+  const verifiedMemberships = restored.filter((r) => r.membershipStatus === 'verified').length;
+  const wouldInjectChars = observed.reduce((n, r) => n + positive(r.wouldInjectChars), 0);
+  const wouldInjectPayloadChars = observed.reduce((n, r) => n + positive(r.wouldInjectPayloadChars), 0);
+  const observedNativePresentChars = observed.reduce((n, r) => n + positive(r.nativePresentChars), 0);
+  const observedRestoreCandidateChars = observed.reduce((n, r) => n + positive(r.restoreCandidateChars), 0);
   // A skip happens after Jev has already judged the transcript, so its provider
   // usage is real cost even though no retained sidecar is applied.
   const scored = [...prepared, ...skipped].filter((r) => r.stats);
@@ -129,6 +142,8 @@ export async function stats(env = process.env) {
   for (const row of ready) readyByRun.set(runKey(row), row);
   const restoresByRun = new Map<string, HistoryRow>();
   for (const row of restored) restoresByRun.set(runKey(row), row);
+  const observedByRun = new Map<string, HistoryRow>();
+  for (const row of observed) observedByRun.set(runKey(row), row);
   const restoreFailuresByRun = new Map<string, HistoryRow>();
   for (const row of restoreFailures) restoreFailuresByRun.set(runKey(row), row);
   const runs: RunSummary[] = [];
@@ -138,6 +153,7 @@ export async function stats(env = process.env) {
     const after = positive(s?.charsAfter);
     const key = runKey(row);
     const restore = restoresByRun.get(key);
+    const observation = observedByRun.get(key);
     const restoreFailure = restoreFailuresByRun.get(key);
     const readyRow = readyByRun.get(key);
     runs.push({
@@ -148,7 +164,7 @@ export async function stats(env = process.env) {
       model: row.model,
       provider: row.provider,
       status: row.status === 'prepared'
-        ? restore ? 'restored' : restoreFailure ? 'restore_failed' : readyRow ? 'ready' : 'prepared'
+        ? restore ? 'restored' : observation ? 'observed' : restoreFailure ? 'restore_failed' : readyRow ? 'ready' : 'prepared'
         : row.status as RunSummary['status'],
       reductionRatio: ratio(Math.max(0, before - after), before),
       charsBefore: before,
@@ -164,9 +180,14 @@ export async function stats(env = process.env) {
       jevOutputTokens: positive(s?.jevOutputTokens),
       jevUsageReportedRequests: Number.isFinite(s?.jevUsageReportedRequests) ? positive(s?.jevUsageReportedRequests) : ((positive(s?.jevInputTokens) + positive(s?.jevOutputTokens)) > 0 ? positive(s?.requests) : 0),
       selectionMs: positive(s?.ms),
-      restoreMode: restore?.restoreMode,
+      restoreMode: restore?.restoreMode ?? observation?.restoreMode,
+      operationMode: row.operationMode ?? restore?.operationMode ?? observation?.operationMode,
       injectedPayloadChars: restore?.injectedPayloadChars,
-      retainedChars: restore?.retainedChars ?? row.retainedChars,
+      wouldInjectPayloadChars: observation?.wouldInjectPayloadChars,
+      retainedChars: restore?.retainedChars ?? observation?.retainedChars ?? row.retainedChars,
+      nativePresentChars: restore?.nativePresentChars ?? observation?.nativePresentChars,
+      restoreCandidateChars: restore?.restoreCandidateChars ?? observation?.restoreCandidateChars,
+      membershipStatus: restore?.membershipStatus ?? observation?.membershipStatus,
       detail: restoreFailure?.detail ?? row.detail,
     });
   }
@@ -179,6 +200,7 @@ export async function stats(env = process.env) {
     prepared: prepared.length,
     ready: ready.length,
     restored: restored.length,
+    observed: observed.length,
     latestRestoredAt: restored.reduce((latest, row) => row.at > latest ? row.at : latest, ''),
     skipped: skipped.length,
     nativeFallbacks: precompactFailures.length,
@@ -196,6 +218,13 @@ export async function stats(env = process.env) {
     injectedPayloadChars,
     restoreEligibleChars,
     restoreCharsNotInjected,
+    nativePresentChars,
+    restoreCandidateChars,
+    verifiedMemberships,
+    wouldInjectChars,
+    wouldInjectPayloadChars,
+    observedNativePresentChars,
+    observedRestoreCandidateChars,
     jevInputTokens,
     jevOutputTokens,
     jevRequests,
@@ -294,8 +323,8 @@ const when=s=>{const d=new Date(s);return Number.isNaN(d.getTime())?'—':d.toLo
 const time=s=>{const d=new Date(s);return Number.isNaN(d.getTime())?'—':d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})};
 const metric=(label,number,detail)=>'<div class="metric"><span class="metric-label">'+label+'</span><strong class="metric-number">'+number+'</strong><span class="metric-detail">'+detail+'</span></div>';
 const actionTag=d=>d.pinned?'<span class="tag protected">Protegido</span>':d.action==='drop_call'?'<span class="tag neutral">Removido</span>':d.action==='truncate_result'?'<span class="tag pending">Resumido</span>':'<span class="tag success">Preservado</span>';
-const statusTag=status=>status==='restored'?'<span class="tag success">Enviado ao Codex</span>':status==='failed'?'<span class="tag fallback">Codex seguiu sem o Jev</span>':status==='restore_failed'?'<span class="tag fallback">Falha ao enviar</span>':status==='skipped'?'<span class="tag neutral">Jev não aplicado</span>':status==='ready'?'<span class="tag pending">Aguardando envio</span>':'<span class="tag pending">Seleção preparada</span>';
-const textAdditional=r=>r.status==='restored'?chars(r.injectedPayloadChars):r.status==='prepared'||r.status==='ready'?'Aguardando':'Não enviado';
+ const statusTag=status=>status==='restored'?'<span class="tag success">Enviado ao Codex</span>':status==='observed'?'<span class="tag neutral">Somente observado</span>':status==='failed'?'<span class="tag fallback">Codex seguiu sem o Jev</span>':status==='restore_failed'?'<span class="tag fallback">Falha ao enviar</span>':status==='skipped'?'<span class="tag neutral">Jev não aplicado</span>':status==='ready'?'<span class="tag pending">Aguardando envio</span>':'<span class="tag pending">Seleção preparada</span>';
+ const textAdditional=r=>r.status==='restored'?chars(r.injectedPayloadChars):r.status==='observed'?'Não injetado · seria '+chars(r.wouldInjectPayloadChars):r.status==='prepared'||r.status==='ready'?'Aguardando':'Não enviado';
 function renderChart(runs){
  const completed=runs.filter(r=>r.status==='restored'&&r.charsBefore>0).slice(0,8);
  if(!completed.length)return '<div class="empty">Ainda não há seleção entregue para comparar.</div>';
@@ -328,12 +357,14 @@ function refresh(){
   document.querySelector('#rounds-chart').innerHTML=renderChart(s.runs);
   document.querySelector('#decision-stats').innerHTML=renderDecisions(s.byTool);
   const usage=s.jevUsageReportedRequests?f(s.jevUsageReportedRequests)+' de '+f(s.jevRequests)+' requisições com uso reportado':'Uso não reportado pelo provedor';
-  document.querySelector('#details').innerHTML=[
-   metric('Codex prosseguiu sem Jev',f(s.nativeFallbacks),'compactação nativa após falha do Jev'),
-   metric('Tokens de entrada Jev',s.jevUsageReportedRequests?f(s.jevInputTokens):'—',usage),
-   metric('Tokens de saída Jev',s.jevUsageReportedRequests?f(s.jevOutputTokens):'—',usage),
-   metric('Tempo médio da seleção',s.evaluatedSelections?f(s.averageSelectionMs)+' ms':'—','não inclui toda a compactação')
-  ].join('');
+   document.querySelector('#details').innerHTML=[
+    metric('Codex prosseguiu sem Jev',f(s.nativeFallbacks),'compactação nativa após falha do Jev'),
+    metric('Tokens de entrada Jev',s.jevUsageReportedRequests?f(s.jevInputTokens):'—',usage),
+    metric('Tokens de saída Jev',s.jevUsageReportedRequests?f(s.jevOutputTokens):'—',usage),
+    metric('Tempo médio da seleção',s.evaluatedSelections?f(s.averageSelectionMs)+' ms':'—','não inclui toda a compactação'),
+    metric('Duplicatas evitadas',s.nativePresentChars?chars(s.nativePresentChars):'—',s.verifiedMemberships?f(s.verifiedMemberships)+' restores conferidos após a compactação':'nenhum restore conferido ainda'),
+    metric('Modo observe',s.observed?f(s.observed):'—',s.observed?chars(s.wouldInjectPayloadChars)+' seriam enviados; o contexto ficou intacto':'nenhuma observação concluída')
+   ].join('');
   document.querySelector('#runs').innerHTML=s.runs.slice(0,50).map(r=>'<tr><td>'+when(r.at)+'</td><td>'+statusTag(r.status)+'</td><td>'+textAdditional(r)+'</td></tr>').join('')||'<tr><td colspan="3" class="empty">Nenhuma compactação registrada ainda.</td></tr>';
   document.querySelector('#decisions').innerHTML=s.recentDecisions.slice(0,50).map(d=>'<tr><td>'+esc(d.tool)+'<div class="cell-note">'+when(d.at)+'</div></td><td>'+actionTag(d)+'</td><td><div class="preview" title="'+esc(d.inputPreview)+'">'+esc(d.inputPreview||'—')+'</div></td><td>'+pct(d.dropLoss)+' / '+pct(d.truncateLoss)+'</td><td class="num">'+chars(d.removedChars)+'</td></tr>').join('')||'<tr><td colspan="5" class="empty">Nenhuma decisão registrada ainda.</td></tr>';
   document.querySelector('#live').textContent='dados locais · atualizado '+new Date().toLocaleTimeString('pt-BR');

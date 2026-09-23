@@ -1,7 +1,7 @@
 {
   "name": "jev-compact",
-  "version": "0.4.0",
-  "description": "Jev-guided retained tool evidence around Codex compaction.",
+  "version": "0.5.0",
+  "description": "Jev-guided Codex compaction with exact post-compaction dedupe and observe mode.",
   "author": {
     "name": "jev-compact contributors"
   },
@@ -16,8 +16,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Jev Compact",
-    "shortDescription": "Preserve useful tool evidence across compaction.",
-    "longDescription": "Uses Jev to select useful tool history before Codex compaction and restores it once afterward, with TypeSafe and OpenRouter transports and local metrics.",
+    "shortDescription": "Restore only useful evidence missing after Codex compaction.",
+    "longDescription": "Uses Jev to select useful history before Codex compaction, verifies what survived native replacement_history, and restores only exact missing evidence. Observe mode measures the same pipeline without changing Codex context. Supports TypeSafe and OpenRouter with local metrics.",
     "developerName": "jev-compact contributors",
     "category": "Productivity",
     "capabilities": [

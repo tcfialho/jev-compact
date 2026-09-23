@@ -1,7 +1,9 @@
 import { type Env } from './provider.js';
 export type RestoreMode = 'preserve' | 'balanced' | 'minimal';
-export type SettingName = 'restore-mode' | 'restore-max-chars' | 'pin-recent-messages' | 'loss-threshold' | 'min-reduction-ratio';
+export type OperationMode = 'active' | 'observe';
+export type SettingName = 'mode' | 'restore-mode' | 'restore-max-chars' | 'pin-recent-messages' | 'loss-threshold' | 'min-reduction-ratio';
 export interface UserSettings {
+    mode: OperationMode;
     restoreMode: RestoreMode;
     restoreModeWarning?: string;
     restoreMaxChars: number;

@@ -108,7 +108,7 @@ First-time setup:
   jev-compact configure PROVIDER     Change provider/key without reinstalling hooks
   jev-compact install                Point Codex hooks at this checkout (development/local use)
   jev-compact doctor                 Verify everything is ready
-  jev-compact config                 Show the five user-facing settings
+  jev-compact config                 Show user-facing settings
   jev-compact config NAME VALUE      Save a setting (works with desktop Codex too)
   jev-compact config reset           Reset saved user settings to defaults
 
@@ -120,6 +120,7 @@ Useful commands:
   jev-compact uninstall              Remove only jev-compact hooks
 
 Environment variables remain supported and override saved configuration.
+Tip: "jev-compact config mode observe" runs Jev and measures what would happen without changing Codex context.
 Run "jev-compact doctor --json" for machine-readable readiness details.`);
 }
 
@@ -165,6 +166,7 @@ async function readiness() {
 
 
 function printSettings(settings: ReturnType<typeof userSettings>): void {
+  console.log(`mode                  ${settings.mode}`);
   console.log(`restore-mode          ${settings.restoreMode}`);
   console.log(`restore-max-chars     ${settings.restoreMaxChars}`);
   console.log(`pin-recent-messages   ${settings.pinRecentMessages}`);
@@ -204,9 +206,9 @@ async function main(): Promise<void> {
   if (cmd === 'config') {
     if (!args.length) { printSettings(userSettings(process.env)); return; }
     if (args[0] === 'reset') { await resetUserSettings(process.env); console.log('Saved jev-compact settings reset to defaults.'); printSettings(userSettings(process.env)); return; }
-    if (args.length < 2) throw new Error('usage: jev-compact config <restore-mode|restore-max-chars|pin-recent-messages|loss-threshold|min-reduction-ratio> <value>');
+    if (args.length < 2) throw new Error('usage: jev-compact config <mode|restore-mode|restore-max-chars|pin-recent-messages|loss-threshold|min-reduction-ratio> <value>');
     const name = args[0] as SettingName;
-    if (!['restore-mode','restore-max-chars','pin-recent-messages','loss-threshold','min-reduction-ratio'].includes(name)) throw new Error(`unknown setting: ${args[0]}`);
+    if (!['mode','restore-mode','restore-max-chars','pin-recent-messages','loss-threshold','min-reduction-ratio'].includes(name)) throw new Error(`unknown setting: ${args[0]}`);
     const settings = await setUserSetting(name, args[1]!, process.env);
     console.log(`Saved ${name}=${args[1]}`);
     printSettings(settings);
@@ -239,6 +241,7 @@ async function main(): Promise<void> {
     console.log(`    Model: ${value.model}`);
     console.log(`    Hooks: ${value.hooksFile}`);
     console.log(`    Data:  ${value.dataDir}`);
+    console.log(`    Mode: ${value.settings.mode}${value.settings.mode === 'observe' ? ' (measures only; no restore context is injected)' : ''}`);
     console.log(`    Restore: ${value.settings.restoreMode} · max ${fmt(value.settings.restoreMaxChars)} chars`);
     console.log(`    Pruning: loss <= ${value.settings.lossThreshold.toFixed(2)} · pin ${fmt(value.settings.pinRecentMessages)} recent messages · require ${(value.settings.minReductionRatio * 100).toFixed(0)}% reduction`);
     if (value.settings.restoreModeWarning) console.log(`WARN  ${value.settings.restoreModeWarning}`);
@@ -268,10 +271,12 @@ async function main(): Promise<void> {
   if (cmd === 'stats') {
     const value = await stats();
     if (args.includes('--json')) { console.log(JSON.stringify(value, null, 2)); return; }
-    console.log(`Compaction attempts: ${fmt(value.attempts)} · restored: ${fmt(value.restored)} · skips: ${fmt(value.skipped)} · native fallbacks: ${fmt(value.nativeFallbacks)} · restore issues: ${fmt(value.restoreFailures)}`);
+    console.log(`Compaction attempts: ${fmt(value.attempts)} · restored: ${fmt(value.restored)} · observed: ${fmt(value.observed)} · skips: ${fmt(value.skipped)} · native fallbacks: ${fmt(value.nativeFallbacks)} · restore issues: ${fmt(value.restoreFailures)}`);
     console.log(`Completed retained-copy reduction: ${chars(value.completedCharsRemoved)} (${(value.completedReductionRatio * 100).toFixed(1)}%)`);
+    console.log(`Exact evidence already present after native compaction: ${chars(value.nativePresentChars)}`);
     console.log(`Hook context delivered after compaction: ${chars(value.injectedChars)}`);
     console.log(`  selected evidence inside it: ${chars(value.injectedPayloadChars)}`);
+    if (value.observed) console.log(`Observe mode would have delivered: ${chars(value.wouldInjectChars)} (${chars(value.wouldInjectPayloadChars)} selected evidence)`);
     if (value.jevUsageReportedRequests) console.log(`Jev provider usage reported: ${fmt(value.jevInputTokens)} input + ${fmt(value.jevOutputTokens)} output tokens (${fmt(value.jevUsageReportedRequests)}/${fmt(value.jevRequests)} requests reported usage)`);
     else console.log(`Jev provider usage: not reported (${fmt(value.jevRequests)} requests observed)`);
     console.log(`Average Jev selection time: ${fmt(value.averageSelectionMs)} ms`);

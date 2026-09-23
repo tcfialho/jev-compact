@@ -240,3 +240,110 @@ test('restore-max-chars is a hard evidence-payload cap in every restore mode', a
     assert.ok(payload.length <= 300, `${mode} payload was ${payload.length}`);
   }
 });
+
+test('post-compaction dedupe injects only retained evidence still missing verbatim', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jev-dedupe-'));
+  const rollout = join(root, 'rollout.jsonl');
+  const prefix = `${JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'old context' }] } })}\n`;
+  const retainedMessages = [
+    { role: 'user', text: 'never edit generated files', toolCalls: [] },
+    { role: 'assistant', text: '', toolCalls: [
+      { id: 'c1', name: 'read', input: { path: 'a.ts' } },
+      { id: 'c2', name: 'read', input: { path: 'b.ts' } },
+    ] },
+    { role: 'user', text: '', toolCalls: [], toolResults: [
+      { callId: 'c1', output: 'already survived result' },
+      { callId: 'c2', output: 'still missing result' },
+    ] },
+  ];
+  const compacted = {
+    type: 'compacted',
+    payload: {
+      window_number: 2,
+      replacement_history: [
+        { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'never edit generated files' }] },
+        { type: 'function_call', call_id: 'c1', name: 'read', arguments: JSON.stringify({ path: 'a.ts' }) },
+        { type: 'function_call_output', call_id: 'c1', output: 'already survived result' },
+      ],
+    },
+  };
+  await writeFile(rollout, prefix + JSON.stringify(compacted) + '\n');
+  const env = { JEV_COMPACT_DATA_DIR: join(root, 'data') };
+  const decisions = [
+    { id: 'd1', callId: 'c1', name: 'read', inputPreview: 'a.ts', dropLoss: 0.9, truncateLoss: 0.9, action: 'keep', resultChars: 23, originalChars: 30, savedChars: 0, pinned: false },
+    { id: 'd2', callId: 'c2', name: 'read', inputPreview: 'b.ts', dropLoss: 0.9, truncateLoss: 0.9, action: 'keep', resultChars: 20, originalChars: 30, savedChars: 0, pinned: false },
+  ];
+  await prepareState({
+    sessionId: 'dedupe', createdAt: new Date().toISOString(), stats, decisions, index: 'old index',
+    operationMode: 'active', wouldApply: true, transcriptPath: rollout,
+    transcriptBytesAtScore: Buffer.byteLength(prefix),
+  }, 'retained context', env, retainedMessages);
+  await markReady('dedupe', undefined, env);
+
+  const restored = await handleHook({ session_id: 'dedupe', hook_event_name: 'SessionStart', source: 'compact', transcript_path: rollout }, env);
+  const text = restored.hookSpecificOutput.additionalContext;
+  assert.match(text, /still missing result/);
+  assert.doesNotMatch(text, /already survived result/);
+  assert.doesNotMatch(text, /never edit generated files/);
+
+  const history = (await readFile(join(env.JEV_COMPACT_DATA_DIR, 'history.jsonl'), 'utf8')).trim().split(/\n/).map(JSON.parse);
+  const row = history.at(-1);
+  assert.equal(row.membershipStatus, 'verified');
+  assert.equal(row.dedupedToolPairs, 1);
+  assert.equal(row.dedupedTextItems, 1);
+  assert.ok(row.nativePresentChars > 0);
+  assert.ok(row.restoreCandidateChars > 0);
+});
+
+test('stale post-compaction checkpoint never suppresses retained evidence', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jev-dedupe-stale-'));
+  const rollout = join(root, 'rollout.jsonl');
+  const compacted = `${JSON.stringify({ type: 'compacted', payload: { window_number: 1, replacement_history: [] } })}\n`;
+  await writeFile(rollout, compacted);
+  const env = { JEV_COMPACT_DATA_DIR: join(root, 'data') };
+  const retainedMessages = [{ role: 'developer', text: 'critical retained evidence', toolCalls: [] }];
+  await prepareState({
+    sessionId: 'dedupe-stale', createdAt: new Date().toISOString(), stats, decisions: [], index: 'index',
+    operationMode: 'active', wouldApply: true, transcriptPath: rollout,
+    // Deliberately after the only checkpoint: this proves the checkpoint is older than our PreCompact snapshot.
+    transcriptBytesAtScore: Buffer.byteLength(compacted) + 100,
+  }, 'critical retained evidence', env, retainedMessages);
+  await markReady('dedupe-stale', undefined, env);
+  const restored = await handleHook({ session_id: 'dedupe-stale', hook_event_name: 'SessionStart', source: 'compact', transcript_path: rollout }, env);
+  assert.match(restored.hookSpecificOutput.additionalContext, /critical retained evidence/);
+  const rows = (await readFile(join(env.JEV_COMPACT_DATA_DIR, 'history.jsonl'), 'utf8')).trim().split(/\n/).map(JSON.parse);
+  assert.equal(rows.at(-1).membershipStatus, 'stale');
+});
+
+test('observe mode computes real post-compaction dedupe but never injects context', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jev-observe-'));
+  const rollout = join(root, 'rollout.jsonl');
+  const prefix = `${JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'before' }] } })}\n`;
+  const compacted = { type: 'compacted', payload: { window_number: 3, replacement_history: [
+    { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'already present' }] },
+  ] } };
+  await writeFile(rollout, prefix + JSON.stringify(compacted) + '\n');
+  const env = { JEV_COMPACT_DATA_DIR: join(root, 'data') };
+  const retainedMessages = [
+    { role: 'user', text: 'already present', toolCalls: [] },
+    { role: 'developer', text: 'would be restored', toolCalls: [] },
+  ];
+  await prepareState({
+    sessionId: 'observe', createdAt: new Date().toISOString(), stats, decisions: [], index: 'index',
+    operationMode: 'observe', wouldApply: true, transcriptPath: rollout,
+    transcriptBytesAtScore: Buffer.byteLength(prefix),
+  }, 'observe retained context', env, retainedMessages);
+  await markReady('observe', undefined, env);
+
+  const observed = await handleHook({ session_id: 'observe', hook_event_name: 'SessionStart', source: 'compact', transcript_path: rollout }, env);
+  assert.equal(observed.hookSpecificOutput, undefined);
+  const rows = (await readFile(join(env.JEV_COMPACT_DATA_DIR, 'history.jsonl'), 'utf8')).trim().split(/\n/).map(JSON.parse);
+  const row = rows.at(-1);
+  assert.equal(row.status, 'observed');
+  assert.equal(row.operationMode, 'observe');
+  assert.equal(row.membershipStatus, 'verified');
+  assert.ok(row.nativePresentChars > 0);
+  assert.ok(row.wouldInjectPayloadChars > 0);
+  const duplicate = await handleHook({ session_id: 'observe', hook_event_name: 'UserPromptSubmit', transcript_path: rollout }, env);
+  assert.equal(duplicate.hookSpecificOutput, undefined);
+});

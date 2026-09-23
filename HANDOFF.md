@@ -1,15 +1,15 @@
-resultado | jev-compact 0.4.0; dashboard/instalacao/opcoes/compatibilidade Codex revisados
+resultado | jev-compact 0.5.0; exact post-compaction dedupe + observe mode implementados sobre o lifecycle Codex
 
-arquitetura | PreCompact seleciona evidência -> Codex compacta nativamente -> PostCompact confirma -> SessionStart(compact) restaura uma vez; UserPromptSubmit é fallback one-shot
+arquitetura | PreCompact registra transcript bytes + Jev seleciona -> Codex compacta nativamente -> PostCompact confirma -> SessionStart lê checkpoint novo -> remove apenas duplicatas verbatim comprovadas -> active injeta uma vez / observe só mede; UserPromptSubmit segue fallback one-shot
 
-dashboard | métricas medidas: chars antes/depois da cópia retida, contexto total devolvido pelo hook, payload de evidência, tokens reais reportados pelo Jev, requests/latência, fallback/skip/restore issue, por-tool e decisões recentes; sem chars/4 como suposta economia de billing
+dedupe | mensagem exige role+texto inteiro exatos; tool pair exige call canônica + result exato sob mesmo call_id; result usa SHA-256 completo; prefixo parecido não basta; checkpoint stale/ausente/diferente => restore conservador antigo
 
-codex atual | additionalContext tem spill default ~2500 tokens; hooks de restore agora usam additionalContextLimit=0 para evitar segundo truncamento invisível e deixar preserve/balanced/minimal + RESTORE_MAX_CHARS controlarem o tamanho real
+observe | config mode observe; Jev e membership rodam de verdade, inclusive quando active teria skip por min-reduction; não retorna additionalContext; registra wouldInject*, nativePresentChars, restoreCandidateChars, membershipStatus
 
-instalacao | setup salva provider/key, copia dist para ~/.codex/jev-compact/runtime e instala hooks apontando para runtime estável; install continua apontando para checkout atual para desenvolvimento; doctor verifica key + 4 hooks
+dashboard | mostrar actual restored separado de observed; exact evidence already present após native compaction; hypothetical observe payload; continua sem chars/4 como billing
 
-opcoes | lossThreshold/JEV_COMPACT_LOSS_THRESHOLD é nome principal; keepThreshold/KEEP_THRESHOLD segue alias; preserve/balanced/minimal são nomes principais; knobs operacionais ficaram avançados
+compat | estado antigo sem operationMode continua active; dedupe é otimização fail-open e não altera retained archive; checkpoint precisa ser posterior ao byte offset capturado em PreCompact
 
-compat | TokenBudget também dispara ciclo compact do Codex e portanto recebe retenção; documentado. Não usar instalação direta e marketplace simultaneamente para evitar hooks duplicados
+testes | membership exato, prefix collision, stale checkpoint, observe one-shot e observe end-to-end adicionados; rodar suite final após merge/sync de dashboard remoto
 
-testes | rodar suite final/release depois do bump 0.4.0
+integração git | checkout local não conseguiu fetch/pull de github.com por DNS do sandbox; a main remota foi verificada em a4639c7. O core remoto não mudou desde v0.4; as mudanças remotas eram CLI/dashboard. O comportamento de dashboard destacado + restart/health foi preservado nesta árvore. Antes de publicar, rebase/cherry-pick este feature commit sobre a main remota atual se ela tiver avançado.

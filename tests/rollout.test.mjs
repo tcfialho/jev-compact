@@ -189,3 +189,20 @@ test('unknown future rollout records fail open while current metadata remains ig
 test('realtime rollout content fails open instead of being invisibly omitted', () => {
   assert.throws(() => parseCodexRollout(JSON.stringify({ type: 'realtime_item', payload: { audio: 'opaque' } })), /realtime Codex history/);
 });
+
+test('snapshot exposes the exact bounded checkpoint offset used for post-compaction membership', async () => {
+  const { mkdtemp, writeFile } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { loadCodexRolloutSnapshot } = await import('../dist/rollout.js');
+  const root = await mkdtemp(join(tmpdir(), 'jev-snapshot-offset-'));
+  const path = join(root, 'rollout.jsonl');
+  const prefix = `${JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'old' }] } })}\n`;
+  const checkpointOffset = Buffer.byteLength(prefix);
+  const checkpoint = `${JSON.stringify({ type: 'compacted', payload: { window_number: 4, replacement_history: [{ type: 'message', role: 'user', content: [{ type: 'input_text', text: 'new' }] }] } })}\n`;
+  await writeFile(path, prefix + checkpoint);
+  const snapshot = await loadCodexRolloutSnapshot(path, 17);
+  assert.equal(snapshot.checkpointOffset, checkpointOffset);
+  assert.equal(snapshot.fileBytes, Buffer.byteLength(prefix + checkpoint));
+  assert.equal(snapshot.messages.at(-1).text, 'new');
+});
