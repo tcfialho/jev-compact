@@ -24,3 +24,4 @@ declare module 'node:os' { export const homedir: any; export const tmpdir: any; 
 declare module 'node:http' { export const createServer: any; }
 declare module 'node:url' { export const fileURLToPath: any; }
 declare module 'node:child_process' { export const spawn: any; }
+declare module 'node:crypto' { export const randomUUID: any; }

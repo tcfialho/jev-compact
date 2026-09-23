@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
-import { writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { compactMessages, reductionRatio } from './compact.js';
 import { startDashboard, stats } from './dashboard.js';
@@ -17,11 +19,55 @@ function flag(args: string[], name: string): string | undefined { const i = args
 function fmt(n: number): string { return Number(n || 0).toLocaleString(); }
 function chars(n: number): string { return n >= 1_000_000 ? `${(n / 1_000_000).toFixed(2)}M chars` : n >= 1_000 ? `${(n / 1_000).toFixed(1)}k chars` : `${fmt(n)} chars`; }
 
+interface DashboardInstance { pid: number; instanceId: string; url: string }
+
+function dashboardInstancePath(port: number): string {
+  return join(dataDir(process.env), `dashboard-${port}.json`);
+}
+
+async function previousDashboard(port: number): Promise<DashboardInstance | undefined> {
+  if (port === 0) return undefined;
+  let instance: DashboardInstance;
+  try { instance = JSON.parse(await readFile(dashboardInstancePath(port), 'utf8')); }
+  catch { return undefined; }
+  if (!Number.isSafeInteger(instance?.pid) || instance.pid <= 0 ||
+      typeof instance.instanceId !== 'string' || !instance.instanceId ||
+      typeof instance.url !== 'string') return undefined;
+  try {
+    const url = new URL(instance.url);
+    if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || Number(url.port) !== port || url.pathname !== '/') return undefined;
+    const response = await fetch(new URL('/api/health', url), { signal: AbortSignal.timeout(1000) });
+    if (!response.ok) return undefined;
+    const health = await response.json();
+    return health.service === 'jev-compact-dashboard' && health.pid === instance.pid && health.instanceId === instance.instanceId
+      ? instance : undefined;
+  } catch { return undefined; }
+}
+
+async function stopPreviousDashboard(port: number): Promise<void> {
+  const previous = await previousDashboard(port);
+  if (!previous) return;
+  try { process.kill(previous.pid); }
+  catch (error) {
+    if (!(error && typeof error === 'object' && 'code' in error && error.code === 'ESRCH')) throw error;
+  }
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    try { await fetch(new URL('/api/health', previous.url), { signal: AbortSignal.timeout(500) }); }
+    catch { return; }
+    await new Promise<void>((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`previous Jev dashboard did not stop on port ${port}`);
+}
+
 async function launchDashboard(port: number): Promise<string> {
+  await stopPreviousDashboard(port);
+  const instanceId = randomUUID();
   const child = spawn(process.execPath, [fileURLToPath(import.meta.url), 'dashboard', '--port', String(port), '--background'], {
     detached: true,
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
+    env: { ...process.env, JEV_COMPACT_DASHBOARD_INSTANCE_ID: instanceId },
   });
   child.unref();
 
@@ -236,7 +282,18 @@ async function main(): Promise<void> {
     const requested = flag(args, '--port') ?? args.find((x) => /^\d+$/.test(x));
     const port = requested ? Number(requested) : 43127;
     if (args.includes('--background')) {
-      const { url } = await startDashboard(port);
+      const instanceId = process.env.JEV_COMPACT_DASHBOARD_INSTANCE_ID ?? randomUUID();
+      process.env.JEV_COMPACT_DASHBOARD_INSTANCE_ID = instanceId;
+      const { server, url } = await startDashboard(port);
+      if (port !== 0) {
+        try {
+          await mkdir(dataDir(process.env), { recursive: true, mode: 0o700 });
+          await writeFile(dashboardInstancePath(port), JSON.stringify({ pid: process.pid, instanceId, url }), { mode: 0o600 });
+        } catch (error) {
+          server.close();
+          throw error;
+        }
+      }
       process.stdout.write(`${url}\n`);
       return;
     }
