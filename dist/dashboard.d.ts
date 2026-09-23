@@ -43,6 +43,7 @@ export declare function stats(env?: Record<string, string | undefined>): Promise
     prepared: number;
     ready: number;
     restored: number;
+    latestRestoredAt: string;
     skipped: number;
     nativeFallbacks: number;
     restoreFailures: number;
@@ -64,6 +65,7 @@ export declare function stats(env?: Record<string, string | undefined>): Promise
     jevRequests: number;
     jevUsageReportedRequests: number;
     jevUsageCoverage: number;
+    evaluatedSelections: number;
     averageSelectionMs: number;
     settings: import("./settings.js").UserSettings;
     byTool: ToolSummary[];
