@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { compactMessages, reductionRatio } from './compact.js';
 import { startDashboard, stats } from './dashboard.js';
+import { dashboardInstancePath, dashboardPort, restartDashboard, runningDashboard } from './dashboard-service.js';
 import { handleHook } from './hooks.js';
 import { resetUserSettings, setUserSetting, userSettings, type SettingName } from './settings.js';
 import { inspectHooks, installHooks, installRuntime, uninstallHooks } from './install.js';
@@ -19,86 +19,6 @@ async function stdin(): Promise<string> { let s = ''; for await (const chunk of 
 function flag(args: string[], name: string): string | undefined { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; }
 function fmt(n: number): string { return Number(n || 0).toLocaleString(); }
 function chars(n: number): string { return n >= 1_000_000 ? `${(n / 1_000_000).toFixed(2)}M chars` : n >= 1_000 ? `${(n / 1_000).toFixed(1)}k chars` : `${fmt(n)} chars`; }
-
-interface DashboardInstance { pid: number; instanceId: string; url: string }
-
-function dashboardInstancePath(port: number): string {
-  return join(dataDir(process.env), `dashboard-${port}.json`);
-}
-
-async function previousDashboard(port: number): Promise<DashboardInstance | undefined> {
-  if (port === 0) return undefined;
-  let instance: DashboardInstance;
-  try { instance = JSON.parse(await readFile(dashboardInstancePath(port), 'utf8')); }
-  catch { return undefined; }
-  if (!Number.isSafeInteger(instance?.pid) || instance.pid <= 0 ||
-      typeof instance.instanceId !== 'string' || !instance.instanceId ||
-      typeof instance.url !== 'string') return undefined;
-  try {
-    const url = new URL(instance.url);
-    if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || Number(url.port) !== port || url.pathname !== '/') return undefined;
-    const response = await fetch(new URL('/api/health', url), { signal: AbortSignal.timeout(1000) });
-    if (!response.ok) return undefined;
-    const health = await response.json();
-    return health.service === 'jev-compact-dashboard' && health.pid === instance.pid && health.instanceId === instance.instanceId
-      ? instance : undefined;
-  } catch { return undefined; }
-}
-
-async function stopPreviousDashboard(port: number): Promise<void> {
-  const previous = await previousDashboard(port);
-  if (!previous) return;
-  try { process.kill(previous.pid); }
-  catch (error) {
-    if (!(error && typeof error === 'object' && 'code' in error && error.code === 'ESRCH')) throw error;
-  }
-  const deadline = Date.now() + 5000;
-  while (Date.now() < deadline) {
-    try { await fetch(new URL('/api/health', previous.url), { signal: AbortSignal.timeout(500) }); }
-    catch { return; }
-    await new Promise<void>((resolve) => setTimeout(resolve, 100));
-  }
-  throw new Error(`previous Jev dashboard did not stop on port ${port}`);
-}
-
-async function launchDashboard(port: number): Promise<string> {
-  await stopPreviousDashboard(port);
-  const instanceId = randomUUID();
-  const child = spawn(process.execPath, [fileURLToPath(import.meta.url), 'dashboard', '--port', String(port), '--background'], {
-    detached: true,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    windowsHide: true,
-    env: { ...process.env, JEV_COMPACT_DASHBOARD_INSTANCE_ID: instanceId },
-  });
-  child.unref();
-
-  return new Promise<string>((resolve, reject) => {
-    let output = '';
-    let errorOutput = '';
-    let settled = false;
-    const timeout = setTimeout(() => finish(new Error('dashboard did not start within 5 seconds')), 5000);
-    const finish = (error?: Error, url?: string) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      child.stdout?.destroy();
-      child.stderr?.destroy();
-      if (error) reject(error);
-      else resolve(url ?? '');
-    };
-
-    child.stdout?.setEncoding('utf8');
-    child.stderr?.setEncoding('utf8');
-    child.stdout?.on('data', (chunk: string) => {
-      output += chunk;
-      const line = output.split(/\r?\n/, 1)[0];
-      if (line) finish(undefined, line);
-    });
-    child.stderr?.on('data', (chunk: string) => { errorOutput += chunk; });
-    child.once('error', (error: Error) => finish(error));
-    child.once('exit', (code: number | null) => finish(new Error(errorOutput.trim() || `dashboard process exited (${code})`)));
-  });
-}
 
 function help(): void {
   const pluginRoot = enabledPluginRoot();
@@ -180,6 +100,7 @@ async function readiness() {
     hooksFile: hooks.path,
     pluginRoot: enabledPluginRoot(),
     dataDir: dataDir(process.env),
+    dashboardUrl: (await runningDashboard(dashboardPort(process.env), process.env))?.url ?? null,
     settings,
   };
 }
@@ -210,6 +131,20 @@ async function installAndExplain(cliPath = fileURLToPath(import.meta.url), comma
   if (!ready.apiKeyConfigured) console.log(`Configure it with: ${commandPrefix} configure ${ready.provider}`);
   console.log('Next: restart Codex, open /hooks once, and enable/trust the jev-compact hooks.');
   console.log(`Then run: ${commandPrefix} doctor`);
+}
+
+function stopWhenIdle(server: any, port: number): void {
+  const idleMinutes = Number(process.env.JEV_COMPACT_DASHBOARD_IDLE_MINUTES);
+  const idleMs = (Number.isFinite(idleMinutes) && idleMinutes > 0 ? idleMinutes : 120) * 60_000;
+  let lastActivity = Date.now();
+  server.on('request', () => { lastActivity = Date.now(); });
+  const idleCheck: any = setInterval(async () => {
+    if (Date.now() - lastActivity < idleMs) return;
+    server.close();
+    if (port !== 0) await rm(dashboardInstancePath(port), { force: true }).catch(() => {});
+    process.exit(0);
+  }, Math.min(60_000, idleMs));
+  idleCheck.unref();
 }
 
 async function main(): Promise<void> {
@@ -273,6 +208,7 @@ async function main(): Promise<void> {
     console.log(`    Model: ${value.model}`);
     console.log(`    Hooks: ${value.pluginRoot ? join(value.pluginRoot, 'hooks', 'hooks.json') : value.hooksFile}`);
     console.log(`    Data:  ${value.dataDir}`);
+    console.log(`    Dashboard: ${value.dashboardUrl ?? 'not running (the plugin starts it with the next Codex session or prompt)'}`);
     console.log(`    Mode: ${value.settings.mode}${value.settings.mode === 'observe' ? ' (measures only; no restore context is injected)' : ''}`);
     console.log(`    Restore: ${value.settings.restoreMode} · max ${fmt(value.settings.restoreMaxChars)} chars`);
     console.log(`    Pruning: loss <= ${value.settings.lossThreshold.toFixed(2)} · pin ${fmt(value.settings.pinRecentMessages)} recent messages · require ${(value.settings.minReductionRatio * 100).toFixed(0)}% reduction`);
@@ -319,7 +255,7 @@ async function main(): Promise<void> {
 
   if (cmd === 'dashboard') {
     const requested = flag(args, '--port') ?? args.find((x) => /^\d+$/.test(x));
-    const port = requested ? Number(requested) : 43127;
+    const port = requested ? Number(requested) : dashboardPort(process.env);
     if (args.includes('--background')) {
       const instanceId = process.env.JEV_COMPACT_DASHBOARD_INSTANCE_ID ?? randomUUID();
       process.env.JEV_COMPACT_DASHBOARD_INSTANCE_ID = instanceId;
@@ -333,10 +269,11 @@ async function main(): Promise<void> {
           throw error;
         }
       }
+      stopWhenIdle(server, port);
       process.stdout.write(`${url}\n`);
       return;
     }
-    const url = await launchDashboard(port);
+    const url = await restartDashboard(port, process.env);
     console.log(`Dashboard: ${url}`);
     return;
   }

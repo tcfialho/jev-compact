@@ -12,7 +12,11 @@ const handlers = Object.values(manifest.hooks).flatMap((groups) => groups.flatMa
 
 // Codex runs plugin hooks through the session's user shell, so the command must not rely on one shell's variable syntax.
 function codexShells() {
-  if (process.platform !== 'win32') return [{ name: 'sh', run: (command, options) => spawnSync('sh', ['-c', command], options) }];
+  if (process.platform !== 'win32') {
+    return ['sh', 'bash', 'zsh']
+      .filter((program) => spawnSync(program, ['-c', 'exit 0']).status === 0)
+      .map((program) => ({ name: program, run: (command, options) => spawnSync(program, ['-c', command], options) }));
+  }
   const comspec = process.env.ComSpec ?? 'cmd.exe';
   const shells = [{ name: 'cmd', run: (command, options) => spawnSync(comspec, ['/C', `"${command}"`], { ...options, windowsVerbatimArguments: true }) }];
   for (const program of ['powershell.exe', 'pwsh.exe']) {
@@ -34,6 +38,7 @@ test('plugin hook command runs from any working directory in every shell Codex m
   const root = await mkdtemp(join(tmpdir(), 'jev-hook-shells-'));
   const env = {
     ...process.env,
+    JEV_COMPACT_DASHBOARD: 'off',
     PLUGIN_ROOT: pluginRoot,
     PLUGIN_DATA: join(root, 'data'),
     CODEX_HOME: join(root, 'codex-home'),

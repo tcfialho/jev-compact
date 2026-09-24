@@ -107,7 +107,9 @@ If Jev fails, a key is missing, the rollout cannot be reconstructed safely, or t
 
 ## Dashboard
 
-Start the local dashboard with:
+With the Codex plugin, the dashboard starts on its own when a Codex session starts, and Codex shows its address. Every prompt keeps it running; after 2 hours without prompts or page visits it stops, and the next session or prompt starts it again. `JEV_COMPACT_DASHBOARD=off` disables this, `JEV_COMPACT_DASHBOARD_PORT` changes the port and `JEV_COMPACT_DASHBOARD_IDLE_MINUTES` changes the 2 hours.
+
+Plugins cannot add commands to your terminal `PATH`, so `jev-compact dashboard` only works if the package is also installed globally. You can always ask Codex to open the Jev Compact dashboard, or start it manually (this restarts it with the current code):
 
 ```bash
 node dist/cli.js dashboard
@@ -311,7 +313,7 @@ The command writes the retained context/JSON and prints compaction statistics to
 - It does **not** select user/developer/system text for deletion.
 - Its post-compaction dedupe does **not** use semantic similarity. Anything not proven present verbatim is preserved for reinjection.
 - It does **not** semantically judge context it cannot safely read. Encrypted agent content, image/audio content and unsupported history shapes fail open to native Codex behavior.
-- It does **not** require a background dashboard process; metrics are always recorded locally and the dashboard is started only when requested.
+- It does **not** keep a dashboard running forever: with the plugin it runs while Codex is in use and stops after 2 hours without activity; metrics are always recorded locally either way.
 
 Codex's experimental token-budget context reset also emits the standard compact-hook lifecycle. `jev-compact` therefore preserves selected evidence around that reset as well. If your reason for enabling token-budget mode is specifically to force a completely clean context with no old retained evidence, disable `jev-compact` for that workflow.
 

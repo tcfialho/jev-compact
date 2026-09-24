@@ -3,6 +3,7 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { compactMessages, reductionRatio } from './compact.js';
+import { dashboardAutostart, dashboardPort, ensureDashboard } from './dashboard-service.js';
 import { inspectHooks, uninstallHooks } from './install.js';
 import { dedupeRetainedMessages, type DedupeSummary } from './membership.js';
 import { providerConfig, resolveApiKey, resolveProvider, type JevProvider } from './provider.js';
@@ -290,17 +291,26 @@ async function restore(input: HookInput, event: 'SessionStart' | 'UserPromptSubm
   };
 }
 
+async function dashboardNotice(env: Record<string, string | undefined>): Promise<string | undefined> {
+  if (!dashboardAutostart(env)) return undefined;
+  try { return `Jev Compact dashboard: ${await ensureDashboard(dashboardPort(env), env)}`; }
+  catch (error) { return `Jev Compact dashboard unavailable: ${error instanceof Error ? error.message : String(error)}`; }
+}
+
 export async function handleHook(value: unknown, env: Record<string, string | undefined> = process.env): Promise<Record<string, unknown>> {
   const input = parseInput(value);
   const migration = await migrateLegacyHooks(input, env);
   if (typeof migration === 'string') return { continue: true, systemMessage: migration };
   if (migration) return { continue: true, suppressOutput: true };
   if (input.hook_event_name === 'SessionStart' && input.source !== 'compact' && env.PLUGIN_ROOT) {
+    const notices: string[] = [];
     const provider = resolveProvider({ provider: requestedProvider(env), env });
-    if (!resolveApiKey(provider, { env })) {
-      return { continue: true, systemMessage: 'Jev Compact needs an API key. Open the plugin and choose Configure with OpenRouter or TypeSafe.' };
-    }
+    if (!resolveApiKey(provider, { env })) notices.push('Jev Compact needs an API key. Open the plugin and choose Configure with OpenRouter or TypeSafe.');
+    const dashboard = await dashboardNotice(env);
+    if (dashboard && (input.source === 'startup' || input.source === 'resume')) notices.push(dashboard);
+    if (notices.length) return { continue: true, systemMessage: notices.join(' · ') };
   }
+  if (input.hook_event_name === 'UserPromptSubmit' && env.PLUGIN_ROOT) await dashboardNotice(env);
   if (input.hook_event_name === 'PreCompact') {
     const createdAt = new Date().toISOString();
     const runId = `${input.session_id}:${input.turn_id ?? 'compact'}:${createdAt}`;

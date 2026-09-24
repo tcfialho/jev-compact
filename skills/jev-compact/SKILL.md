@@ -34,7 +34,7 @@ Do not claim that hook mode rewrites the native Codex compaction request. It pre
 - `node "<installedPath>/dist/cli.js" config mode observe`
 - `node "<installedPath>/dist/cli.js" config restore-mode balanced`
 - `node "<installedPath>/dist/cli.js" stats --json`
-- `node "<installedPath>/dist/cli.js" dashboard`
+- `node "<installedPath>/dist/cli.js" dashboard` (restarts it; the plugin already starts it at `http://127.0.0.1:43127/` with each Codex session)
 - `node "<installedPath>/dist/cli.js" compact <rollout.jsonl> --context retained.txt --json retained.json`
 
 ## Files
