@@ -1,6 +1,8 @@
 Design influences and compatibility research:
-- IAmUnbounded/save-token-jev-clean (MIT)
-- leonaaardob/fast-dev-compaction (MIT)
-- tamaratran/fast-jev-compaction (MIT)
+- IAmUnbounded/save-token-jev-clean (MIT; Copyright (c) 2026 save-token-jev contributors)
+- leonaaardob/fast-dev-compaction (MIT; Copyright (c) 2025)
+- tamaratran/fast-jev-compaction (MIT; Copyright (c) 2025)
+
+The MIT permission notice and disclaimer are included in LICENSE.
 
 This project is a new implementation combining the useful architectural ideas with additional Codex lifecycle handling, one-shot restoration and OpenRouter support.
