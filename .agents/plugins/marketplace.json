@@ -1,0 +1,20 @@
+{
+  "name": "jev-compact",
+  "interface": {
+    "displayName": "Jev Compact"
+  },
+  "plugins": [
+    {
+      "name": "jev-compact",
+      "source": {
+        "source": "local",
+        "path": "./"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

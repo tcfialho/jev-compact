@@ -1,0 +1,37 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "jev-compact",
+  "version": "0.5.0",
+  "description": "Jev-guided Codex compaction with exact post-compaction dedupe and observe mode.",
+  "author": {
+    "name": "jev-compact contributors"
+  },
+  "repository": "https://github.com/tcfialho/jev-compact",
+  "license": "MIT",
+  "keywords": [
+    "codex",
+    "jev",
+    "compaction",
+    "openrouter",
+    "context"
+  ],
+  "extensions": {
+    "com.openai": {
+      "hooks": "./hooks/hooks.json",
+      "interface": {
+        "displayName": "Jev Compact",
+        "shortDescription": "Restore only useful evidence missing after Codex compaction.",
+        "longDescription": "Uses Jev to select useful history before Codex compaction, verifies what survived native replacement_history, and restores only exact missing evidence. Observe mode measures the same pipeline without changing Codex context. Supports TypeSafe and OpenRouter with local metrics.",
+        "developerName": "jev-compact contributors",
+        "category": "Productivity",
+        "capabilities": [
+          "hooks"
+        ],
+        "defaultPrompt": [
+          "Show what Jev retained from the last compaction.",
+          "Explain my jev-compact configuration."
+        ]
+      }
+    }
+  }
+}
