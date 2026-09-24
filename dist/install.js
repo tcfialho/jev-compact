@@ -115,7 +115,7 @@ export async function installHooks(cliPath, env = process.env) {
     };
     add('PreCompact', { matcher: 'manual|auto', hooks: [commandHook(command, commandWindows, { timeout: 120, statusMessage: 'Selecting retained context with Jev' })] });
     add('PostCompact', { matcher: 'manual|auto', hooks: [commandHook(command, commandWindows, { timeout: 10 })] });
-    add('SessionStart', { matcher: 'compact', hooks: [commandHook(command, commandWindows, { timeout: 10, additionalContextLimit: 0, statusMessage: 'Restoring Jev-retained context' })] });
+    add('SessionStart', { matcher: 'startup|resume|clear|compact', hooks: [commandHook(command, commandWindows, { timeout: 10, additionalContextLimit: 0, statusMessage: 'Loading Jev Compact' })] });
     add('UserPromptSubmit', { hooks: [commandHook(command, commandWindows, { timeout: 10, additionalContextLimit: 0 })] });
     if (JSON.stringify(config) === before)
         return path;

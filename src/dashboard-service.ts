@@ -1,12 +1,12 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dataDir } from './store.js';
 
 type Env = Record<string, string | undefined>;
-interface DashboardInstance { pid: number; instanceId: string; url: string }
+interface DashboardInstance { pid: number; instanceId: string; url: string; entry?: string }
 
 export const DEFAULT_DASHBOARD_PORT = 43127;
 const defaultCliPath = fileURLToPath(new URL('./cli.js', import.meta.url));
@@ -46,7 +46,7 @@ export async function runningDashboard(port: number, env: Env = process.env): Pr
     if (!response.ok) return undefined;
     const health = await response.json();
     return health.service === 'jev-compact-dashboard' && health.pid === instance.pid && health.instanceId === instance.instanceId
-      ? instance : undefined;
+      ? { ...instance, entry: typeof health.entry === 'string' ? health.entry : undefined } : undefined;
   } catch { return undefined; }
 }
 
@@ -110,8 +110,14 @@ export async function restartDashboard(port: number, env: Env = process.env, cli
   return spawnDashboard(port, env, cliPath);
 }
 
-/** Reuses a healthy dashboard; each check also counts as activity and postpones its idle shutdown. */
+function samePath(left: string, right: string): boolean {
+  const normalize = (path: string) => (process.platform === 'win32' ? resolve(path).toLowerCase() : resolve(path));
+  return normalize(left) === normalize(right);
+}
+
+/** Reuses a healthy dashboard, replacing one left running by another installed version. */
 export async function ensureDashboard(port: number, env: Env = process.env, cliPath = defaultCliPath): Promise<string> {
   const running = await runningDashboard(port, env);
-  return running ? running.url : spawnDashboard(port, env, cliPath);
+  if (running?.entry && samePath(running.entry, cliPath)) return running.url;
+  return running ? restartDashboard(port, env, cliPath) : spawnDashboard(port, env, cliPath);
 }

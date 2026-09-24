@@ -77,7 +77,7 @@ test('plugin migrates legacy hooks without running twice in the same session', a
   await writeFile(file, JSON.stringify({ hooks: { PreCompact: [{ hooks: [
     { type: 'command', command: 'node legacy hook --jev-compact' },
   ] }] } }));
-  const env = { JEV_COMPACT_DASHBOARD: 'off', PLUGIN_ROOT: join(root, 'plugin'), CODEX_HOME: root, CODEX_HOOKS_FILE: file, JEV_COMPACT_DATA_DIR: join(root, 'data') };
+  const env = { PLUGIN_ROOT: join(root, 'plugin'), CODEX_HOME: root, CODEX_HOOKS_FILE: file, JEV_COMPACT_DATA_DIR: join(root, 'data') };
   const event = { session_id: 'migration-session', hook_event_name: 'PreCompact', transcript_path: null };
   const first = await handleHook({ session_id: 'migration-session', hook_event_name: 'SessionStart', source: 'startup' }, env);
   assert.equal(first.systemMessage, undefined);
@@ -91,7 +91,7 @@ test('plugin migrates legacy hooks without running twice in the same session', a
 
 test('plugin startup reports a missing key from its own environment', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jev-plugin-key-'));
-  const env = { JEV_COMPACT_DASHBOARD: 'off', PLUGIN_ROOT: join(root, 'plugin'), CODEX_HOME: root, JEV_COMPACT_CONFIG_DIR: join(root, 'config') };
+  const env = { PLUGIN_ROOT: join(root, 'plugin'), CODEX_HOME: root, JEV_COMPACT_CONFIG_DIR: join(root, 'config') };
   const result = await handleHook({ session_id: 'missing-key', hook_event_name: 'SessionStart', source: 'startup' }, env);
   assert.match(result.systemMessage, /needs an API key/);
 });
@@ -104,7 +104,7 @@ test('plugin reports a migration error and preserves older hooks', async () => {
   ] }] } }));
   await mkdir(join(root, 'jev-compact'));
   await writeFile(join(root, 'jev-compact', 'migrations'), 'blocked');
-  const env = { JEV_COMPACT_DASHBOARD: 'off', PLUGIN_ROOT: join(root, 'plugin'), CODEX_HOME: root, CODEX_HOOKS_FILE: hookFile };
+  const env = { PLUGIN_ROOT: join(root, 'plugin'), CODEX_HOME: root, CODEX_HOOKS_FILE: hookFile };
   const result = await handleHook({ session_id: 'migration-error', hook_event_name: 'SessionStart', source: 'startup' }, env);
   assert.match(result.systemMessage, /could not migrate older hooks/);
   assert.deepEqual((await inspectHooks(env)).events, ['PreCompact']);

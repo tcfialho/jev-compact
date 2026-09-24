@@ -12,55 +12,41 @@ You do not need to understand Jev to use it. In simple terms:
 
 User, developer and system text is never selected for deletion by Jev. Exact copies may be omitted from the **extra reinjection** when Codex already preserved the same text verbatim; the retained archive on disk is unchanged.
 
-## Quick setup
+## Install
 
-Requires **Node.js 20+** and either a TypeSafe API key or an OpenRouter API key. No `npm install` is required for a downloaded release because `dist/` is included.
+You need **Node.js 20+** and an **OpenRouter** or **TypeSafe** API key. Pick one of the two ways below, not both.
 
-The unscoped npm name `jev-compact` currently belongs to a different project. Install this project from its Codex plugin marketplace or a release of this repository until its own npm package is published.
-
-If you installed Jev Compact as a Codex plugin, open the plugin and choose **Configure Jev Compact with OpenRouter** or **Configure Jev Compact with TypeSafe**. Codex checks for an existing key first. If one is needed, enter it in the terminal prompt shown by the installed plugin's CLI; the key is not sent through chat. Open `/hooks` and confirm the four Jev Compact hooks are active. Plugin setup uses the bundled hooks.
-
-For a downloaded release, use the commands below from the extracted folder.
-
-### TypeSafe
-
-From this folder:
+### Option 1: Codex plugin (recommended)
 
 ```bash
-node dist/cli.js setup
+codex plugin marketplace add tcfialho/jev-compact
+codex plugin add jev-compact@jev-compact
 ```
 
-Paste your TypeSafe key when asked. The key is not echoed and is stored locally with restrictive `0600` permissions where the OS supports Unix-style file modes.
-`setup` also copies the compiled runtime to `~/.codex/jev-compact/runtime`, so the installed hooks do not depend on keeping the downloaded/extracted folder in the same place. At the end it prints the exact stable command you can use later for `doctor`, `config`, `stats` and `dashboard` even if you delete the extracted folder.
+Then, in Codex:
 
-### OpenRouter
+1. Ask: `Configure Jev Compact with OpenRouter` (or `with TypeSafe`) and type the key in the terminal prompt it opens.
+2. Open `/hooks` and approve the four Jev Compact hooks.
+
+This installs no terminal command. Everything runs inside Codex.
+
+### Option 2: npm (adds the `jev-compact` terminal command)
 
 ```bash
-node dist/cli.js setup openrouter
+npm install -g github:tcfialho/jev-compact
+jev-compact setup openrouter
 ```
 
-After setup:
+Use `jev-compact setup` instead for TypeSafe. Then restart Codex, open `/hooks` and approve the four hooks.
 
-1. Restart Codex.
-2. Open `/hooks` once in Codex.
-3. Review and enable/trust the `jev-compact` hooks.
-4. Verify the installation:
+Do not run `npm install -g jev-compact`: that name belongs to another project.
 
-```bash
-node dist/cli.js doctor
-```
+### Check
 
-A healthy setup looks like this:
+- npm: `jev-compact doctor`
+- Plugin: ask Codex `Check Jev Compact`.
 
-```text
-OK  API key (typesafe)
-OK  Codex hooks (PostCompact, PreCompact, SessionStart, UserPromptSubmit)
-OK  Node v20+
-```
-
-If the package is installed on your PATH, use `jev-compact ...` instead of `node dist/cli.js ...`. If you are using only an extracted release, use the stable `node ~/.codex/jev-compact/runtime/dist/cli.js ...` command printed by `setup` after you move/delete the release folder.
-
-Plugin setup uses bundled hooks and migrates older Jev Compact user hooks automatically.
+Commands below are written as `jev-compact ...`. With the plugin only, ask Codex to run them, or use `node "<plugin folder>/dist/cli.js" ...`.
 
 ## What Jev is doing
 
@@ -107,19 +93,11 @@ If Jev fails, a key is missing, the rollout cannot be reconstructed safely, or t
 
 ## Dashboard
 
-With the Codex plugin, the dashboard starts on its own when a Codex session starts, and Codex shows its address. Every prompt keeps it running; after 2 hours without prompts or page visits it stops, and the next session or prompt starts it again. `JEV_COMPACT_DASHBOARD=off` disables this, `JEV_COMPACT_DASHBOARD_PORT` changes the port and `JEV_COMPACT_DASHBOARD_IDLE_MINUTES` changes the 2 hours.
+Open **http://127.0.0.1:43127/**. It starts by itself when a Codex session starts, and Codex shows the address. It keeps running until you restart the computer or stop it; after an update the next Codex session replaces it with the new version.
 
-Plugins cannot add commands to your terminal `PATH`, so `jev-compact dashboard` only works if the package is also installed globally. You can always ask Codex to open the Jev Compact dashboard, or start it manually (this restarts it with the current code):
-
-```bash
-node dist/cli.js dashboard
-```
-
-Then open the localhost URL it prints. The default is:
-
-```text
-http://127.0.0.1:43127/
-```
+- Restart it: `jev-compact dashboard` (plugin: `node "<plugin folder>/dist/cli.js" dashboard`).
+- Other port: `JEV_COMPACT_DASHBOARD_PORT=43200`.
+- Do not start it: `JEV_COMPACT_DASHBOARD=off`.
 
 The dashboard shows values that `jev-compact` can actually measure:
 
@@ -141,13 +119,13 @@ It deliberately **does not claim Codex billing-token savings** from a `character
 For a terminal summary:
 
 ```bash
-node dist/cli.js stats
+jev-compact stats
 ```
 
 Machine-readable output:
 
 ```bash
-node dist/cli.js stats --json
+jev-compact stats --json
 ```
 
 ## Observe mode
@@ -155,7 +133,7 @@ node dist/cli.js stats --json
 If you want to measure `jev-compact` on your own Codex sessions before allowing it to add context back, use:
 
 ```bash
-node dist/cli.js config mode observe
+jev-compact config mode observe
 ```
 
 In `observe` mode the real Jev selection still runs at `PreCompact`, and after native compaction `jev-compact` performs the same exact membership/dedupe analysis it would use in active mode. It records:
@@ -172,7 +150,7 @@ But it returns **no `additionalContext`** to Codex. Native Codex context is ther
 Return to normal behavior with:
 
 ```bash
-node dist/cli.js config mode active
+jev-compact config mode active
 ```
 
 `shadow` remains accepted as an environment/config alias for `observe`, but `observe` is the preferred user-facing name.
@@ -195,7 +173,7 @@ The restore mode controls how much of the Jev-selected evidence is added back to
 ### `preserve` — default
 
 ```bash
-node dist/cli.js config restore-mode preserve
+jev-compact config restore-mode preserve
 ```
 
 Uses the most preservation-first reinjection: selected evidence is restored up to the global cap. To stop one enormous tool result from crowding out everything else, an individual very large result is represented by a bounded head+tail excerpt in the injected payload; the full retained normalized archive always stays on disk and its path is included.
@@ -205,7 +183,7 @@ Use this when continuity/exact details matter more than minimizing the extra con
 ### `balanced`
 
 ```bash
-node dist/cli.js config restore-mode balanced
+jev-compact config restore-mode balanced
 ```
 
 Injects a compact index plus a bounded evidence excerpt. The full retained normalized archive stays on disk.
@@ -215,7 +193,7 @@ This reduces the context added by `jev-compact` while still giving Codex some ex
 ### `minimal`
 
 ```bash
-node dist/cli.js config restore-mode minimal
+jev-compact config restore-mode minimal
 ```
 
 Injects only the compact index and file pointers. The full retained normalized archive stays on disk.
@@ -229,13 +207,13 @@ Legacy values `full`, `hybrid` and `index` are still accepted as aliases for `pr
 Defaults are preservation-first. You can change the user-facing settings without editing shell files; this matters when Codex is launched from a desktop app.
 
 ```bash
-node dist/cli.js config
-node dist/cli.js config mode observe
-node dist/cli.js config restore-mode balanced
-node dist/cli.js config restore-max-chars 40000
-node dist/cli.js config pin-recent-messages 8
-node dist/cli.js config loss-threshold 0.4
-node dist/cli.js config min-reduction-ratio 0.20
+jev-compact config
+jev-compact config mode observe
+jev-compact config restore-mode balanced
+jev-compact config restore-max-chars 40000
+jev-compact config pin-recent-messages 8
+jev-compact config loss-threshold 0.4
+jev-compact config min-reduction-ratio 0.20
 ```
 
 | Setting | Default | Plain meaning | If you increase it |
@@ -275,8 +253,8 @@ Provider endpoint/model overrides (`JEV_MODEL`, `JEV_BASE_URL`, `OPENROUTER_JEV_
 Normal first-time use is the `setup` command shown at the top of this README. It stores the selected provider/key and prepares the hooks for the installation method in use. Use `configure` when you want to change the provider or key. The five normal behavior settings use the same config directory, so desktop-launched Codex sessions do not depend on shell startup files.
 
 ```bash
-node dist/cli.js configure typesafe
-node dist/cli.js configure openrouter
+jev-compact configure typesafe
+jev-compact configure openrouter
 ```
 
 Environment variables are also supported and override saved configuration:
@@ -299,7 +277,7 @@ Key-file overrides are supported through `TYPESAFE_API_KEY_FILE`, `OPENROUTER_AP
 Preview what Jev would retain from a Codex rollout without modifying Codex:
 
 ```bash
-node dist/cli.js compact rollout.jsonl \
+jev-compact compact rollout.jsonl \
   --context retained.txt \
   --json retained.json
 ```
@@ -313,7 +291,7 @@ The command writes the retained context/JSON and prints compaction statistics to
 - It does **not** select user/developer/system text for deletion.
 - Its post-compaction dedupe does **not** use semantic similarity. Anything not proven present verbatim is preserved for reinjection.
 - It does **not** semantically judge context it cannot safely read. Encrypted agent content, image/audio content and unsupported history shapes fail open to native Codex behavior.
-- It does **not** keep a dashboard running forever: with the plugin it runs while Codex is in use and stops after 2 hours without activity; metrics are always recorded locally either way.
+- It does **not** need the dashboard to record metrics; they are always saved locally.
 
 Codex's experimental token-budget context reset also emits the standard compact-hook lifecycle. `jev-compact` therefore preserves selected evidence around that reset as well. If your reason for enabling token-budget mode is specifically to force a completely clean context with no old retained evidence, disable `jev-compact` for that workflow.
 

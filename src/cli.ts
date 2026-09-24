@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { compactMessages, reductionRatio } from './compact.js';
@@ -34,8 +34,9 @@ First-time setup:
 Useful commands:
   ${command} config              Show settings
   ${command} stats               Show measured compaction statistics
-  ${command} dashboard           Open the local dashboard
+  ${command} dashboard           Restart the local dashboard
 
+Dashboard: http://127.0.0.1:${dashboardPort(process.env)}/ (starts with each Codex session)
 Open /hooks in Codex to review the plugin hooks.`);
     return;
   }
@@ -52,12 +53,13 @@ First-time setup:
   jev-compact config reset           Reset saved user settings to defaults
 
 Useful commands:
-  jev-compact dashboard [--port N]   Local measured-impact dashboard
+  jev-compact dashboard [--port N]   Restart the local dashboard
   jev-compact stats [--json]         Measured local compaction statistics
   jev-compact compact FILE [--context FILE] [--json FILE]
                                      Preview Jev selection on a Codex rollout
   jev-compact uninstall              Remove only jev-compact hooks
 
+Dashboard: http://127.0.0.1:${dashboardPort(process.env)}/ (starts with each Codex session)
 Environment variables remain supported and override saved configuration.
 Tip: "jev-compact config mode observe" runs Jev and measures what would happen without changing Codex context.
 Run "jev-compact doctor --json" for machine-readable readiness details.`);
@@ -130,27 +132,14 @@ async function installAndExplain(cliPath = fileURLToPath(import.meta.url), comma
   console.log(`Provider: ${ready.provider} · API key: ${ready.apiKeyConfigured ? 'configured' : 'MISSING'}`);
   if (!ready.apiKeyConfigured) console.log(`Configure it with: ${commandPrefix} configure ${ready.provider}`);
   console.log('Next: restart Codex, open /hooks once, and enable/trust the jev-compact hooks.');
+  console.log(`Dashboard: http://127.0.0.1:${dashboardPort(process.env)}/ (starts with each Codex session)`);
   console.log(`Then run: ${commandPrefix} doctor`);
-}
-
-function stopWhenIdle(server: any, port: number): void {
-  const idleMinutes = Number(process.env.JEV_COMPACT_DASHBOARD_IDLE_MINUTES);
-  const idleMs = (Number.isFinite(idleMinutes) && idleMinutes > 0 ? idleMinutes : 120) * 60_000;
-  let lastActivity = Date.now();
-  server.on('request', () => { lastActivity = Date.now(); });
-  const idleCheck: any = setInterval(async () => {
-    if (Date.now() - lastActivity < idleMs) return;
-    server.close();
-    if (port !== 0) await rm(dashboardInstancePath(port), { force: true }).catch(() => {});
-    process.exit(0);
-  }, Math.min(60_000, idleMs));
-  idleCheck.unref();
 }
 
 async function main(): Promise<void> {
   const [cmd, ...args] = process.argv.slice(2);
   if (!cmd || cmd === 'help' || cmd === '--help' || cmd === '-h') return help();
-  if (cmd === 'hook') { const out = await handleHook(JSON.parse(await stdin())); process.stdout.write(`${JSON.stringify(out)}\n`); return; }
+  if (cmd === 'hook') { const out = await handleHook(JSON.parse(await stdin()), process.env, { startDashboard: true }); process.stdout.write(`${JSON.stringify(out)}\n`); return; }
 
   if (cmd === 'configure') {
     const provider = args[0] as Exclude<JevProvider, 'auto'> | undefined;
@@ -178,6 +167,7 @@ async function main(): Promise<void> {
     if (enabledPluginRoot()) {
       await uninstallHooks();
       console.log('Open /hooks in Codex and confirm the four Jev Compact hooks are active.');
+      console.log(`Dashboard: http://127.0.0.1:${dashboardPort(process.env)}/ (starts with each Codex session)`);
       return;
     }
     const runtimeCli = await installRuntime(fileURLToPath(import.meta.url), process.env);
@@ -269,7 +259,6 @@ async function main(): Promise<void> {
           throw error;
         }
       }
-      stopWhenIdle(server, port);
       process.stdout.write(`${url}\n`);
       return;
     }

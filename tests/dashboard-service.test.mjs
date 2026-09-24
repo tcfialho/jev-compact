@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { access, mkdtemp } from 'node:fs/promises';
+import { cp, mkdtemp, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { ensureDashboard, runningDashboard } from '../dist/dashboard-service.js';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { ensureDashboard, restartDashboard, runningDashboard } from '../dist/dashboard-service.js';
 import { handleHook } from '../dist/hooks.js';
 
 async function freePort() {
@@ -33,25 +34,32 @@ test('plugin session start opens one shared dashboard and later prompts reuse it
     if (running) process.kill(running.pid);
   });
 
-  const started = await handleHook({ session_id: 'dashboard', hook_event_name: 'SessionStart', source: 'startup' }, env);
+  const started = await handleHook({ session_id: 'dashboard', hook_event_name: 'SessionStart', source: 'startup' }, env, { startDashboard: true });
   assert.equal(started.systemMessage, `Jev Compact dashboard: http://127.0.0.1:${port}/`);
   const first = await runningDashboard(port, env);
   assert.ok(first);
 
-  const prompt = await handleHook({ session_id: 'dashboard', hook_event_name: 'UserPromptSubmit', prompt: 'hi' }, env);
+  const prompt = await handleHook({ session_id: 'dashboard', hook_event_name: 'UserPromptSubmit', prompt: 'hi' }, env, { startDashboard: true });
   assert.equal(prompt.systemMessage, undefined);
   assert.equal(await ensureDashboard(port, env), first.url);
   assert.equal((await runningDashboard(port, env)).pid, first.pid);
 });
 
-test('an unused dashboard stops itself and removes its instance file', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'jev-dashboard-idle-'));
+test('a dashboard left by another installed version is replaced', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'jev-dashboard-version-'));
   const port = await freePort();
-  const env = { ...process.env, JEV_COMPACT_DATA_DIR: join(root, 'data'), JEV_COMPACT_DASHBOARD_IDLE_MINUTES: '0.02' };
+  const env = { ...process.env, JEV_COMPACT_DATA_DIR: join(root, 'data') };
+  const olderCli = join(root, 'older', 'dist', 'cli.js');
+  await cp(fileURLToPath(new URL('../dist', import.meta.url)), dirname(olderCli), { recursive: true });
+  await writeFile(join(root, 'older', 'package.json'), '{"type":"module"}');
+  t.after(async () => {
+    const running = await runningDashboard(port, env);
+    if (running) process.kill(running.pid);
+  });
+  await restartDashboard(port, env, olderCli);
+  const older = await runningDashboard(port, env);
   await ensureDashboard(port, env);
-  assert.ok(await runningDashboard(port, env));
-  // Health checks count as activity, so wait without polling.
-  await new Promise((resolve) => setTimeout(resolve, 4000));
-  assert.equal(await runningDashboard(port, env), undefined);
-  await assert.rejects(access(join(root, 'data', `dashboard-${port}.json`)));
+  const current = await runningDashboard(port, env);
+  assert.notEqual(current.pid, older.pid);
+  assert.equal(current.entry.toLowerCase(), fileURLToPath(new URL('../dist/cli.js', import.meta.url)).toLowerCase());
 });

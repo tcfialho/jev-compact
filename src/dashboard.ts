@@ -405,6 +405,7 @@ export async function startDashboard(port = 43127, env = process.env): Promise<{
         service: 'jev-compact-dashboard',
         pid: process.pid,
         instanceId: env.JEV_COMPACT_DASHBOARD_INSTANCE_ID ?? null,
+        entry: process.argv[1] ?? null,
       });
       if (url.pathname === '/api/stats') return json(res, await currentStats());
       if (url.pathname === '/api/history') return json(res, (await readHistory(env)).slice(-200).reverse());

@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dataDir } from './store.js';
 export const DEFAULT_DASHBOARD_PORT = 43127;
@@ -51,7 +51,7 @@ export async function runningDashboard(port, env = process.env) {
             return undefined;
         const health = await response.json();
         return health.service === 'jev-compact-dashboard' && health.pid === instance.pid && health.instanceId === instance.instanceId
-            ? instance : undefined;
+            ? { ...instance, entry: typeof health.entry === 'string' ? health.entry : undefined } : undefined;
     }
     catch {
         return undefined;
@@ -124,8 +124,14 @@ export async function restartDashboard(port, env = process.env, cliPath = defaul
     await stopDashboard(port, env);
     return spawnDashboard(port, env, cliPath);
 }
-/** Reuses a healthy dashboard; each check also counts as activity and postpones its idle shutdown. */
+function samePath(left, right) {
+    const normalize = (path) => (process.platform === 'win32' ? resolve(path).toLowerCase() : resolve(path));
+    return normalize(left) === normalize(right);
+}
+/** Reuses a healthy dashboard, replacing one left running by another installed version. */
 export async function ensureDashboard(port, env = process.env, cliPath = defaultCliPath) {
     const running = await runningDashboard(port, env);
-    return running ? running.url : spawnDashboard(port, env, cliPath);
+    if (running?.entry && samePath(running.entry, cliPath))
+        return running.url;
+    return running ? restartDashboard(port, env, cliPath) : spawnDashboard(port, env, cliPath);
 }
