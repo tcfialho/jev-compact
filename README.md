@@ -1,22 +1,33 @@
 # jev-compact
 
-`jev-compact` helps Codex keep the **useful exact details** from a long coding session when Codex compacts its context.
+When a Codex conversation gets long, Codex **compacts** it: it swaps the old history for a short summary so it can keep working. Exact details often get lost in that summary (an error message, a file it already read, a test result), and Codex may have to fetch them again.
 
-You do not need to understand Jev to use it. In simple terms:
+jev-compact works alongside Codex:
 
-- Codex accumulates messages, commands, file reads, test output, searches, etc.
-- Before Codex compacts that history, `jev-compact` asks Jev which completed tool calls/results still matter.
-- Useful evidence is kept; stale tool history can be shortened or removed from the retained copy.
-- Codex performs its normal/native compaction.
-- After compaction, `jev-compact` checks what survived **verbatim** in Codex's new history and adds back only selected evidence that is still missing.
+1. Right before compaction, it asks **Jev** (a small, fast AI model that only answers yes/no style questions) which old command outputs still matter.
+2. Codex compacts as usual.
+3. Right after, jev-compact adds back only the useful details the summary lost.
 
-User, developer and system text is never selected for deletion by Jev. Exact copies may be omitted from the **extra reinjection** when Codex already preserved the same text verbatim; the retained archive on disk is unchanged.
+Your own messages are never removed. If anything goes wrong, Codex simply compacts as it normally would.
+
+Good to know:
+
+- It does **not** make compaction itself use fewer tokens. It adds back a limited amount of text (60,000 characters at most by default) so Codex loses less and redoes less work.
+- Each compaction may make a few small paid Jev requests, billed to your OpenRouter or TypeSafe key.
+- The dashboard shows what it actually did in your sessions.
 
 ## Install
 
-You need **Node.js 20+** and an **OpenRouter** or **TypeSafe** API key. Pick one of the two ways below, not both.
+You need:
+
+- **Node.js 20 or newer**, free from [nodejs.org](https://nodejs.org).
+- An **API key** (a password-like code) from [OpenRouter](https://openrouter.ai/keys) or TypeSafe.
+
+Pick **one** of the two ways below.
 
 ### Option 1: Codex plugin (recommended)
+
+In a terminal:
 
 ```bash
 codex plugin marketplace add tcfialho/jev-compact
@@ -25,28 +36,28 @@ codex plugin add jev-compact@jev-compact
 
 Then, in Codex:
 
-1. Ask: `Configure Jev Compact with OpenRouter` (or `with TypeSafe`) and type the key in the terminal prompt it opens.
-2. Open `/hooks` and approve the four Jev Compact hooks.
+1. Ask: `Configure Jev Compact with OpenRouter` (or `with TypeSafe`) and paste the key where the terminal asks for it.
+2. Type `/hooks` and approve the four Jev Compact hooks.
 
-This installs no terminal command. Everything runs inside Codex.
-
-### Option 2: npm (adds the `jev-compact` terminal command)
+### Option 2: npm (also gives you the `jev-compact` terminal command)
 
 ```bash
-npm install -g github:tcfialho/jev-compact
+npm install -g --install-links github:tcfialho/jev-compact
 jev-compact setup openrouter
 ```
 
-Use `jev-compact setup` instead for TypeSafe. Then restart Codex, open `/hooks` and approve the four hooks.
+For TypeSafe, run `jev-compact setup` instead. Then restart Codex, type `/hooks` and approve the four hooks.
 
-Do not run `npm install -g jev-compact`: that name belongs to another project.
+Keep `--install-links`: without it, current npm versions install a broken link. Do not run `npm install -g jev-compact`: that name belongs to another project.
 
-### Check
+### Check that it works
 
 - npm: `jev-compact doctor`
 - Plugin: ask Codex `Check Jev Compact`.
 
-Commands below are written as `jev-compact ...`. With the plugin only, ask Codex to run them, or use `node "<plugin folder>/dist/cli.js" ...`.
+The next time Codex starts, it shows the dashboard address (see [Dashboard](#dashboard)).
+
+Commands below are written as `jev-compact ...`. With the plugin only, ask Codex to run them for you.
 
 ## What Jev is doing
 
@@ -93,9 +104,9 @@ If Jev fails, a key is missing, the rollout cannot be reconstructed safely, or t
 
 ## Dashboard
 
-Open **http://127.0.0.1:43127/**. It starts by itself when a Codex session starts, and Codex shows the address. It keeps running until you restart the computer or stop it; after an update the next Codex session replaces it with the new version.
+Open **http://127.0.0.1:43127/** in your browser. It starts by itself when a Codex session starts, and Codex shows the address. It keeps running until you restart the computer; after an update, the next Codex session switches it to the new version.
 
-- Restart it: `jev-compact dashboard` (plugin: `node "<plugin folder>/dist/cli.js" dashboard`).
+- Restart it: `jev-compact dashboard` (plugin: ask Codex to restart the Jev Compact dashboard).
 - Other port: `JEV_COMPACT_DASHBOARD_PORT=43200`.
 - Do not start it: `JEV_COMPACT_DASHBOARD=off`.
 
