@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { homedir } from 'node:os';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { compactMessages, reductionRatio } from './compact.js';
 import { startDashboard, stats } from './dashboard.js';
@@ -114,6 +116,23 @@ async function launchDashboard(port) {
     });
 }
 function help() {
+    if (installedPluginRoot()) {
+        const command = `node "${fileURLToPath(import.meta.url)}"`;
+        console.log(`Jev Compact plugin
+
+First-time setup:
+  ${command} setup openrouter    Save an OpenRouter API key
+  ${command} setup typesafe      Save a TypeSafe API key
+  ${command} doctor              Check provider, key and plugin hooks
+
+Useful commands:
+  ${command} config              Show settings
+  ${command} stats               Show measured compaction statistics
+  ${command} dashboard           Open the local dashboard
+
+Open /hooks in Codex to review the plugin hooks.`);
+        return;
+    }
     console.log(`jev-compact
 
 First-time setup:
@@ -177,6 +196,15 @@ async function secret(prompt) {
         process.stdin.on('data', onData);
     });
 }
+function installedPluginRoot() {
+    const cliPath = fileURLToPath(import.meta.url);
+    const cacheRoot = resolve(process.env.CODEX_HOME ?? join(homedir(), '.codex'), 'plugins', 'cache');
+    const relativeCliPath = relative(cacheRoot, cliPath);
+    if (relativeCliPath === '..' || relativeCliPath.startsWith(`..${sep}`) || isAbsolute(relativeCliPath))
+        return undefined;
+    const pluginRoot = dirname(dirname(cliPath));
+    return existsSync(join(pluginRoot, 'hooks', 'hooks.json')) ? pluginRoot : undefined;
+}
 async function readiness() {
     const provider = resolveProvider({ provider: process.env.JEV_COMPACT_PROVIDER, env: process.env });
     const config = providerConfig({ provider, env: process.env });
@@ -191,6 +219,7 @@ async function readiness() {
         hooksInstalled: hooks.installed,
         hookEvents: hooks.events,
         hooksFile: hooks.path,
+        pluginRoot: installedPluginRoot(),
         dataDir: dataDir(process.env),
         settings,
     };
@@ -208,6 +237,8 @@ function printSettings(settings) {
 async function configureProvider(provider) {
     const key = await secret(`${provider === 'typesafe' ? 'TypeSafe' : 'OpenRouter'} API key: `);
     const saved = await saveProviderConfiguration(provider, key, process.env);
+    if (installedPluginRoot())
+        await uninstallHooks();
     console.log(`Configured ${provider}.\nKey saved: ${saved.keyFile}\nProvider preference saved: ${saved.providerFile}`);
 }
 async function installAndExplain(cliPath = fileURLToPath(import.meta.url), commandPrefix = 'jev-compact') {
@@ -262,12 +293,21 @@ async function main() {
         if (provider !== 'typesafe' && provider !== 'openrouter')
             throw new Error('usage: jev-compact setup [typesafe|openrouter]');
         await configureProvider(provider);
+        if (installedPluginRoot()) {
+            console.log('Open /hooks in Codex and confirm the four Jev Compact hooks are active.');
+            return;
+        }
         const runtimeCli = await installRuntime(fileURLToPath(import.meta.url), process.env);
         console.log(`Runtime installed: ${runtimeCli}`);
         await installAndExplain(runtimeCli, `node \"${runtimeCli}\"`);
         return;
     }
     if (cmd === 'install') {
+        if (installedPluginRoot()) {
+            await uninstallHooks();
+            console.log('Jev Compact hooks are supplied by the plugin. Open /hooks in Codex to review them.');
+            return;
+        }
         await installAndExplain();
         return;
     }
@@ -283,17 +323,24 @@ async function main() {
         }
         console.log(`jev-compact doctor\n`);
         console.log(`${value.apiKeyConfigured ? 'OK' : 'MISSING'}  API key (${value.provider})`);
-        console.log(`${value.hooksInstalled ? 'OK' : 'MISSING'}  Codex hooks (${value.hookEvents.join(', ') || 'none'})`);
+        if (value.pluginRoot)
+            console.log('CHECK  Plugin hooks: open /hooks and confirm four active');
+        else
+            console.log(`${value.hooksInstalled ? 'OK' : 'MISSING'}  Codex hooks (${value.hookEvents.join(', ') || 'none'})`);
         console.log(`OK  Node ${value.node}`);
         console.log(`    Model: ${value.model}`);
-        console.log(`    Hooks: ${value.hooksFile}`);
+        console.log(`    Hooks: ${value.pluginRoot ? join(value.pluginRoot, 'hooks', 'hooks.json') : value.hooksFile}`);
         console.log(`    Data:  ${value.dataDir}`);
         console.log(`    Mode: ${value.settings.mode}${value.settings.mode === 'observe' ? ' (measures only; no restore context is injected)' : ''}`);
         console.log(`    Restore: ${value.settings.restoreMode} · max ${fmt(value.settings.restoreMaxChars)} chars`);
         console.log(`    Pruning: loss <= ${value.settings.lossThreshold.toFixed(2)} · pin ${fmt(value.settings.pinRecentMessages)} recent messages · require ${(value.settings.minReductionRatio * 100).toFixed(0)}% reduction`);
         if (value.settings.restoreModeWarning)
             console.log(`WARN  ${value.settings.restoreModeWarning}`);
-        if (!value.apiKeyConfigured && !value.hooksInstalled) {
+        if (value.pluginRoot) {
+            if (!value.apiKeyConfigured)
+                console.log(`\nFix API key: node "${fileURLToPath(import.meta.url)}" configure ${value.provider}`);
+        }
+        else if (!value.apiKeyConfigured && !value.hooksInstalled) {
             console.log(`\nFix both: jev-compact setup${value.provider === 'openrouter' ? ' openrouter' : ''}`);
         }
         else {

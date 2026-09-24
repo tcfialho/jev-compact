@@ -19,7 +19,7 @@ declare module 'node:fs/promises' {
   export const mkdir: any; export const rename: any; export const copyFile: any; export const cp: any; export const chmod: any; export const rm: any; export const readdir: any; export const stat: any;
 }
 declare module 'node:fs' { export const existsSync: any; export const readFileSync: any; export const writeFileSync: any; }
-declare module 'node:path' { export const join: any; export const dirname: any; export const resolve: any; export const basename: any; }
+declare module 'node:path' { export const join: any; export const dirname: any; export const resolve: any; export const basename: any; export const isAbsolute: any; export const relative: any; export const sep: string; }
 declare module 'node:os' { export const homedir: any; export const tmpdir: any; }
 declare module 'node:http' { export const createServer: any; }
 declare module 'node:url' { export const fileURLToPath: any; }

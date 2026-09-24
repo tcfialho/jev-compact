@@ -16,6 +16,10 @@ User, developer and system text is never selected for deletion by Jev. Exact cop
 
 Requires **Node.js 20+** and either a TypeSafe API key or an OpenRouter API key. No `npm install` is required for a downloaded release because `dist/` is included.
 
+If you installed Jev Compact as a Codex plugin, open the plugin and choose **Configure Jev Compact with OpenRouter** or **Configure Jev Compact with TypeSafe**. Codex checks for an existing key first. If one is needed, enter it in the terminal prompt shown by the installed plugin's CLI; the key is not sent through chat. Open `/hooks` and confirm the four Jev Compact hooks are active. Plugin setup uses the bundled hooks.
+
+For a downloaded release, use the commands below from the extracted folder.
+
 ### TypeSafe
 
 From this folder:
@@ -54,7 +58,7 @@ OK  Node v20+
 
 If the package is installed on your PATH, use `jev-compact ...` instead of `node dist/cli.js ...`. If you are using only an extracted release, use the stable `node ~/.codex/jev-compact/runtime/dist/cli.js ...` command printed by `setup` after you move/delete the release folder.
 
-Use **one installation path only**. The setup above installs user-level Codex hooks. If you later install `jev-compact` from a Codex plugin marketplace, do not also run `jev-compact install`, because the plugin package already carries its own hooks.
+Plugin setup manages its bundled hooks and removes older Jev Compact user hooks when configuring a key.
 
 ## What Jev is doing
 
@@ -262,7 +266,7 @@ Provider endpoint/model overrides (`JEV_MODEL`, `JEV_BASE_URL`, `OPENROUTER_JEV_
 
 ## Provider configuration
 
-Normal first-time use is the `setup` command shown at the top of this README. It stores the selected provider/key and installs the hooks. Use `configure` only when you want to change the provider or key **without reinstalling hooks**. The five normal behavior settings use the same config directory, so desktop-launched Codex sessions do not depend on shell startup files.
+Normal first-time use is the `setup` command shown at the top of this README. It stores the selected provider/key and prepares the hooks for the installation method in use. Use `configure` when you want to change the provider or key. The five normal behavior settings use the same config directory, so desktop-launched Codex sessions do not depend on shell startup files.
 
 ```bash
 node dist/cli.js configure typesafe

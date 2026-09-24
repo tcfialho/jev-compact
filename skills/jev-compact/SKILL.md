@@ -1,11 +1,19 @@
 ---
 name: jev-compact
-description: Inspect and explain Jev-guided retained context around Codex compaction, its decisions, metrics, and local sidecar files.
+description: Configure Jev Compact with OpenRouter or TypeSafe, check plugin readiness, and explain compaction decisions and metrics.
 ---
 
 # Jev Compact
 
-Use this skill when the user asks about the plugin's compaction decisions, retained context, configuration, metrics, or troubleshooting.
+Use this skill when the user asks to set up an API key, check readiness, or inspect compaction decisions and metrics.
+
+## Plugin setup
+
+Find the installed `jev-compact` entry with `codex plugin list --json` and use its `installedPath` to run `dist/cli.js`. Do not assume a global `jev-compact` command exists.
+
+Run `node "<installedPath>/dist/cli.js" doctor --json` first. If `apiKeyConfigured` is true, keep the current provider and key. Run `node "<installedPath>/dist/cli.js" install` to remove any older Jev Compact user hooks while keeping the plugin hooks. Check `/hooks` in Codex and confirm PreCompact, PostCompact, SessionStart, and UserPromptSubmit are active.
+
+If the key is missing, use `setup openrouter` or `setup typesafe` from that installed CLI path. Ask which provider only when the user has not specified one. Give the exact local command and have the user enter the key in the terminal's masked prompt; never ask for the key in chat. Plugin setup keeps hook management inside Codex. Recheck `doctor --json` and `/hooks` afterward. In plugin mode, `hooksInstalled` describes only standalone user hooks; `pluginRoot` identifies the plugin package.
 
 ## Lifecycle
 
@@ -18,9 +26,9 @@ Do not claim that hook mode rewrites the native Codex compaction request. It pre
 
 ## Useful commands
 
-- `jev-compact setup` (TypeSafe, first-time setup)
-- `jev-compact setup openrouter` (OpenRouter, first-time setup)
-- `jev-compact doctor`
+- `node "<installedPath>/dist/cli.js" setup openrouter` (OpenRouter)
+- `node "<installedPath>/dist/cli.js" setup typesafe` (TypeSafe)
+- `node "<installedPath>/dist/cli.js" doctor`
 - `jev-compact config`
 - `jev-compact config mode observe`
 - `jev-compact config restore-mode balanced`

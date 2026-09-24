@@ -106,7 +106,10 @@ export async function uninstallHooks(env = process.env): Promise<string> {
   try { loaded = await loadHookConfig(path); } catch (error) { throw error; }
   if (!loaded.existed) return path;
   const { config } = loaded;
+  const before = JSON.stringify(config);
   if (config.hooks) for (const key of Object.keys(config.hooks)) config.hooks[key] = (config.hooks[key] ?? []).filter((entry) => !ours(entry));
+  if (JSON.stringify(config) === before) return path;
+  await copyFile(path, `${path}.bak.${Date.now()}`);
   await writeFile(path, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
   return path;
 }
