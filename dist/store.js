@@ -1,10 +1,11 @@
 import { appendFile, chmod, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { legacyHistoryPaths } from './legacy.js';
 import { enabledPluginDataDir } from './plugin-installation.js';
 function safe(value) { return value.replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 180); }
 export function dataDir(env = process.env) {
-    return env.PLUGIN_DATA ?? env.JEV_COMPACT_DATA_DIR ?? enabledPluginDataDir(env) ?? join(env.CODEX_HOME ?? join(homedir(), '.codex'), 'jev-compact');
+    return env.PLUGIN_DATA ?? env.JEVCOMP_DATA_DIR ?? enabledPluginDataDir(env) ?? join(env.CODEX_HOME ?? join(homedir(), '.codex'), 'jevcomp');
 }
 export function statePath(sessionId, env = process.env) { return join(dataDir(env), 'sessions', `${safe(sessionId)}.json`); }
 export function contextPath(sessionId, env = process.env) { return join(dataDir(env), 'sessions', `${safe(sessionId)}.context.txt`); }
@@ -12,10 +13,10 @@ export function messagesPath(sessionId, env = process.env) { return join(dataDir
 export function historyPath(env = process.env) { return join(dataDir(env), 'history.jsonl'); }
 export function readableHistoryPaths(env = process.env) {
     const current = historyPath(env);
-    if (env.PLUGIN_DATA || env.JEV_COMPACT_DATA_DIR || !enabledPluginDataDir(env))
+    if (env.JEVCOMP_DATA_DIR)
         return [current];
-    const legacy = join(env.CODEX_HOME ?? join(homedir(), '.codex'), 'jev-compact', 'history.jsonl');
-    return legacy === current ? [current] : [legacy, current];
+    const standalone = join(env.CODEX_HOME ?? join(homedir(), '.codex'), 'jevcomp', 'history.jsonl');
+    return [...new Set([...legacyHistoryPaths(env), standalone, current])];
 }
 async function ensurePrivateDir(path) {
     await mkdir(path, { recursive: true, mode: 0o700 });

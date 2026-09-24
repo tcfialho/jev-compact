@@ -1,6 +1,6 @@
 {
-  "name": "jev-compact",
-  "version": "0.5.5",
+  "name": "jevcomp",
+  "version": "0.6.0",
   "description": "Jev-guided Codex compaction with conservative post-compaction dedupe, observe mode, TypeSafe and OpenRouter.",
   "type": "module",
   "license": "MIT",
@@ -8,7 +8,7 @@
     "node": ">=20"
   },
   "bin": {
-    "jev-compact": "dist/cli.js"
+    "jevcomp": "dist/cli.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

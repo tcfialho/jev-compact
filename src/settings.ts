@@ -50,7 +50,7 @@ export interface UserSettings {
 }
 
 export function settingsPath(env: Env = process.env): string {
-  return env.JEV_COMPACT_SETTINGS_FILE ?? join(configDir(env), 'settings.json');
+  return env.JEVCOMP_SETTINGS_FILE ?? join(configDir(env), 'settings.json');
 }
 
 function saved(env: Env): SavedSettings {
@@ -86,18 +86,18 @@ function normalizedOperationMode(value: string | undefined): OperationMode | und
 
 export function userSettings(env: Env = process.env): UserSettings {
   const stored = saved(env);
-  const operationMode = normalizedOperationMode(env.JEV_COMPACT_MODE) ?? stored.mode ?? 'active';
-  const rawMode = env.JEV_COMPACT_RESTORE_MODE;
+  const operationMode = normalizedOperationMode(env.JEVCOMP_MODE) ?? stored.mode ?? 'active';
+  const rawMode = env.JEVCOMP_RESTORE_MODE;
   const modeFromEnv = normalizedMode(rawMode);
   const restoreMode = modeFromEnv ?? stored.restoreMode ?? 'preserve';
   const rawModeNormalized = (rawMode ?? '').trim().toLowerCase();
   const restoreModeWarning = rawMode !== undefined && rawModeNormalized !== '' && !modeFromEnv
     ? `unknown restore mode ${JSON.stringify(rawModeNormalized)}; using ${stored.restoreMode ?? 'preserve'}`
     : undefined;
-  const restoreMax = envNumber(env, ['JEV_COMPACT_RESTORE_MAX_CHARS', 'JEV_COMPACT_CONTEXT_CHARS']) ?? stored.restoreMaxChars ?? 60_000;
-  const pinRecent = envNumber(env, ['JEV_COMPACT_PIN_RECENT_MESSAGES', 'JEV_COMPACT_PRESERVE_RECENT']) ?? stored.pinRecentMessages ?? 6;
-  const loss = envNumber(env, ['JEV_COMPACT_LOSS_THRESHOLD', 'JEV_COMPACT_KEEP_THRESHOLD']) ?? stored.lossThreshold ?? 0.5;
-  const minReduction = envNumber(env, ['JEV_COMPACT_MIN_REDUCTION_RATIO', 'JEV_COMPACT_MIN_REDUCTION']) ?? stored.minReductionRatio ?? 0.15;
+  const restoreMax = envNumber(env, ['JEVCOMP_RESTORE_MAX_CHARS', 'JEVCOMP_CONTEXT_CHARS']) ?? stored.restoreMaxChars ?? 60_000;
+  const pinRecent = envNumber(env, ['JEVCOMP_PIN_RECENT_MESSAGES', 'JEVCOMP_PRESERVE_RECENT']) ?? stored.pinRecentMessages ?? 6;
+  const loss = envNumber(env, ['JEVCOMP_LOSS_THRESHOLD', 'JEVCOMP_KEEP_THRESHOLD']) ?? stored.lossThreshold ?? 0.5;
+  const minReduction = envNumber(env, ['JEVCOMP_MIN_REDUCTION_RATIO', 'JEVCOMP_MIN_REDUCTION']) ?? stored.minReductionRatio ?? 0.15;
   return {
     mode: operationMode,
     restoreMode,

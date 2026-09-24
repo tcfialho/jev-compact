@@ -10,7 +10,7 @@ function runningPluginRoot(env) {
     if (isAbsolute(relativeModule))
         return undefined;
     const parts = relativeModule.split(sep);
-    if (parts.length !== 5 || parts[0] === '..' || parts[1] !== 'jev-compact' || parts[3] !== 'dist')
+    if (parts.length !== 5 || parts[0] === '..' || parts[1] !== 'jevcomp' || parts[3] !== 'dist')
         return undefined;
     const root = dirname(dirname(fileURLToPath(import.meta.url)));
     return existsSync(join(root, 'hooks', 'hooks.json')) ? root : undefined;
@@ -18,7 +18,7 @@ function runningPluginRoot(env) {
 function cachedPluginRoot(env) {
     try {
         for (const marketplace of readdirSync(pluginCacheRoot(env))) {
-            const versions = join(pluginCacheRoot(env), marketplace, 'jev-compact');
+            const versions = join(pluginCacheRoot(env), marketplace, 'jevcomp');
             if (!existsSync(versions))
                 continue;
             for (const version of readdirSync(versions).sort((left, right) => right.localeCompare(left, undefined, { numeric: true }))) {
@@ -49,7 +49,7 @@ export function enabledPluginRoot(env = process.env) {
         });
         const installed = JSON.parse(output).installed;
         for (const plugin of installed ?? []) {
-            if (plugin.name !== 'jev-compact' || !plugin.enabled)
+            if (plugin.name !== 'jevcomp' || !plugin.enabled)
                 continue;
             if (![plugin.marketplaceName, plugin.name, plugin.version].every((part) => /^[\w.+-]+$/.test(part)))
                 continue;
@@ -75,7 +75,7 @@ export function enabledPluginDataDir(env = process.env) {
     if (isAbsolute(relativeRoot))
         return undefined;
     const parts = relativeRoot.split(sep);
-    if (parts.length !== 3 || parts[0] === '..' || parts[1] !== 'jev-compact')
+    if (parts.length !== 3 || parts[0] === '..' || parts[1] !== 'jevcomp')
         return undefined;
     return join(codexHome(env), 'plugins', 'data', `${parts[1]}-${parts[0]}`);
 }

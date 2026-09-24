@@ -13,7 +13,7 @@ function runningPluginRoot(env: Env): string | undefined {
   const relativeModule = relative(pluginCacheRoot(env), fileURLToPath(import.meta.url));
   if (isAbsolute(relativeModule)) return undefined;
   const parts = relativeModule.split(sep);
-  if (parts.length !== 5 || parts[0] === '..' || parts[1] !== 'jev-compact' || parts[3] !== 'dist') return undefined;
+  if (parts.length !== 5 || parts[0] === '..' || parts[1] !== 'jevcomp' || parts[3] !== 'dist') return undefined;
   const root = dirname(dirname(fileURLToPath(import.meta.url)));
   return existsSync(join(root, 'hooks', 'hooks.json')) ? root : undefined;
 }
@@ -21,7 +21,7 @@ function runningPluginRoot(env: Env): string | undefined {
 function cachedPluginRoot(env: Env): string | undefined {
   try {
     for (const marketplace of readdirSync(pluginCacheRoot(env))) {
-      const versions = join(pluginCacheRoot(env), marketplace, 'jev-compact');
+      const versions = join(pluginCacheRoot(env), marketplace, 'jevcomp');
       if (!existsSync(versions)) continue;
       for (const version of readdirSync(versions).sort((left: string, right: string) => right.localeCompare(left, undefined, { numeric: true }))) {
         const root = join(versions, version);
@@ -48,7 +48,7 @@ export function enabledPluginRoot(env: Env = process.env): string | undefined {
     });
     const installed = JSON.parse(output).installed as Array<{ name: string; marketplaceName: string; version: string; enabled: boolean }>;
     for (const plugin of installed ?? []) {
-      if (plugin.name !== 'jev-compact' || !plugin.enabled) continue;
+      if (plugin.name !== 'jevcomp' || !plugin.enabled) continue;
       if (![plugin.marketplaceName, plugin.name, plugin.version].every((part) => /^[\w.+-]+$/.test(part))) continue;
       const root = join(pluginCacheRoot(env), plugin.marketplaceName, plugin.name, plugin.version);
       if (existsSync(join(root, 'hooks', 'hooks.json'))) {
@@ -70,6 +70,6 @@ export function enabledPluginDataDir(env: Env = process.env): string | undefined
   const relativeRoot = relative(pluginCacheRoot(env), root);
   if (isAbsolute(relativeRoot)) return undefined;
   const parts = relativeRoot.split(sep);
-  if (parts.length !== 3 || parts[0] === '..' || parts[1] !== 'jev-compact') return undefined;
+  if (parts.length !== 3 || parts[0] === '..' || parts[1] !== 'jevcomp') return undefined;
   return join(codexHome(env), 'plugins', 'data', `${parts[1]}-${parts[0]}`);
 }

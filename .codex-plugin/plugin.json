@@ -1,12 +1,12 @@
 {
-  "name": "jev-compact",
-  "version": "0.5.5",
+  "name": "jevcomp",
+  "version": "0.6.0",
   "description": "Jev-guided Codex compaction with exact post-compaction dedupe and observe mode.",
   "author": {
-    "name": "jev-compact contributors"
+    "name": "jevcomp contributors"
   },
-  "homepage": "https://github.com/tcfialho/jev-compact",
-  "repository": "https://github.com/tcfialho/jev-compact",
+  "homepage": "https://github.com/tcfialho/jevcomp",
+  "repository": "https://github.com/tcfialho/jevcomp",
   "license": "MIT",
   "keywords": [
     "codex",
@@ -17,18 +17,18 @@
   ],
   "skills": "./skills/",
   "interface": {
-    "displayName": "Jev Compact",
+    "displayName": "jevcomp",
     "shortDescription": "Restore only useful evidence missing after Codex compaction.",
     "longDescription": "Uses Jev to select useful history before Codex compaction and restore exact missing evidence. Requires an OpenRouter or TypeSafe API key; configure it after installation. Observe mode measures the pipeline without changing Codex context.",
-    "developerName": "jev-compact contributors",
+    "developerName": "jevcomp contributors",
     "category": "Productivity",
-    "websiteURL": "https://github.com/tcfialho/jev-compact",
+    "websiteURL": "https://github.com/tcfialho/jevcomp",
     "capabilities": [
       "hooks"
     ],
     "defaultPrompt": [
-      "Configure Jev Compact with OpenRouter.",
-      "Configure Jev Compact with TypeSafe.",
+      "Configure jevcomp with OpenRouter.",
+      "Configure jevcomp with TypeSafe.",
       "Show what Jev retained from the last compaction."
     ]
   }

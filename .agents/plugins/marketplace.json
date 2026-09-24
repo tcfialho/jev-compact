@@ -1,11 +1,11 @@
 {
-  "name": "jev-compact",
+  "name": "jevcomp",
   "interface": {
-    "displayName": "Jev Compact"
+    "displayName": "jevcomp"
   },
   "plugins": [
     {
-      "name": "jev-compact",
+      "name": "jevcomp",
       "source": {
         "source": "local",
         "path": "./"

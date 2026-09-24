@@ -20,7 +20,7 @@ const decisions = [
 
 test('dashboard reports measured impact without invented token-savings estimates', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'jev-dashboard-'));
-  const env = { JEV_COMPACT_DATA_DIR: root };
+  const env = { JEVCOMP_DATA_DIR: root };
   const runId = '2026-09-22T12:00:00.000Z';
   await appendHistory({ at: runId, runId, sessionId: 's1', phase: 'precompact', status: 'prepared', provider: 'typesafe', stats: compactStats, decisions, retainedChars: 4300 }, env);
   await appendHistory({ at: '2026-09-22T12:00:01.000Z', runId, sessionId: 's1', phase: 'restore', status: 'restored', stats: compactStats, restoreMode: 'balanced', retainedChars: 4300, injectedPayloadChars: 1800, injectedChars: 2100 }, env);
@@ -60,7 +60,7 @@ test('dashboard reports measured impact without invented token-savings estimates
   assert.match(html, /color-scheme:dark/);
   assert.doesNotMatch(html, /estimated tokens saved/i);
   const health = await fetch(`${dashboard.url}api/health`).then((r) => r.json());
-  assert.equal(health.service, 'jev-compact-dashboard');
+  assert.equal(health.service, 'jevcomp-dashboard');
   assert.equal(health.pid, process.pid);
   const api = await fetch(`${dashboard.url}api/stats`).then((r) => r.json());
   assert.equal(api.transcriptCharsRemoved, 12000);
@@ -80,7 +80,7 @@ test('dashboard cache invalidates when persisted settings change without new his
   const { startDashboard } = await import('../dist/dashboard.js');
   const { setUserSetting } = await import('../dist/settings.js');
   const root = await mkdtemp(join(tmpdir(), 'jev-dashboard-settings-'));
-  const env = { JEV_COMPACT_DATA_DIR: join(root, 'data'), JEV_COMPACT_CONFIG_DIR: join(root, 'config') };
+  const env = { JEVCOMP_DATA_DIR: join(root, 'data'), JEVCOMP_CONFIG_DIR: join(root, 'config') };
   const { server, url } = await startDashboard(0, env);
   try {
     const before = await fetch(`${url}api/stats`).then((response) => response.json());

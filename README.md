@@ -1,12 +1,12 @@
-# jev-compact
+# jevcomp
 
 When a Codex conversation gets long, Codex **compacts** it: it swaps the old history for a short summary so it can keep working. Exact details often get lost in that summary (an error message, a file it already read, a test result), and Codex may have to fetch them again.
 
-jev-compact works alongside Codex:
+jevcomp works alongside Codex:
 
 1. Right before compaction, it asks **Jev** (a small, fast AI model that only answers yes/no style questions) which old command outputs still matter.
 2. Codex compacts as usual.
-3. Right after, jev-compact adds back only the useful details the summary lost.
+3. Right after, jevcomp adds back only the useful details the summary lost.
 
 Your own messages are never removed. If anything goes wrong, Codex simply compacts as it normally would.
 
@@ -25,39 +25,41 @@ You need:
 
 Pick **one** of the two ways below.
 
+Used the old name `jev-compact`? Install `jevcomp` the same way. Your saved key, settings, history and old hooks are picked up automatically; then remove the old plugin with `codex plugin remove jev-compact@jev-compact`.
+
 ### Option 1: Codex plugin (recommended)
 
 In a terminal:
 
 ```bash
-codex plugin marketplace add tcfialho/jev-compact
-codex plugin add jev-compact@jev-compact
+codex plugin marketplace add tcfialho/jevcomp
+codex plugin add jevcomp@jevcomp
 ```
 
 Then, in Codex:
 
-1. Ask: `Configure Jev Compact with OpenRouter` (or `with TypeSafe`) and paste the key where the terminal asks for it.
-2. Type `/hooks` and approve the four Jev Compact hooks.
+1. Ask: `Configure jevcomp with OpenRouter` (or `with TypeSafe`) and paste the key where the terminal asks for it.
+2. Type `/hooks` and approve the four jevcomp hooks.
 
-### Option 2: npm (also gives you the `jev-compact` terminal command)
+### Option 2: npm (also gives you the `jevcomp` terminal command)
 
 ```bash
-npm install -g --install-links github:tcfialho/jev-compact
-jev-compact setup openrouter
+npm install -g --install-links github:tcfialho/jevcomp
+jevcomp setup openrouter
 ```
 
-For TypeSafe, run `jev-compact setup` instead. Then restart Codex, type `/hooks` and approve the four hooks.
+For TypeSafe, run `jevcomp setup` instead. Then restart Codex, type `/hooks` and approve the four hooks.
 
-Keep `--install-links`: without it, current npm versions install a broken link. Do not run `npm install -g jev-compact`: that name belongs to another project.
+Keep `--install-links`: without it, current npm versions install a broken link.
 
 ### Check that it works
 
-- npm: `jev-compact doctor`
-- Plugin: ask Codex `Check Jev Compact`.
+- npm: `jevcomp doctor`
+- Plugin: ask Codex `Check jevcomp`.
 
 The next time Codex starts, it shows the dashboard address (see [Dashboard](#dashboard)).
 
-Commands below are written as `jev-compact ...`. With the plugin only, ask Codex to run them for you.
+Commands below are written as `jevcomp ...`. With the plugin only, ask Codex to run them for you.
 
 ## What Jev is doing
 
@@ -74,13 +76,13 @@ That produces three practical outcomes:
 | --- | --- |
 | **Keep** | Call and complete result remain in the retained evidence. |
 | **Shorten** | Call remains; a long result keeps a bounded prefix plus a recovery note. |
-| **Remove** | Call and result are omitted from `jev-compact`'s retained evidence. The tool can be rerun if needed. |
+| **Remove** | Call and result are omitted from `jevcomp`'s retained evidence. The tool can be rerun if needed. |
 
 Recent messages are pinned and never pruned.
 
 ## How it fits into Codex
 
-Current Codex does not let a `PreCompact` command hook replace the history that Codex itself will compact. `jev-compact` therefore wraps native compaction instead of replacing it:
+Current Codex does not let a `PreCompact` command hook replace the history that Codex itself will compact. `jevcomp` therefore wraps native compaction instead of replacing it:
 
 ```text
 PreCompact
@@ -106,15 +108,15 @@ If Jev fails, a key is missing, the rollout cannot be reconstructed safely, or t
 
 Open **http://127.0.0.1:43127/** in your browser. It starts by itself when a Codex session starts, and Codex shows the address. It keeps running until you restart the computer; after an update, the next Codex session switches it to the new version.
 
-- Restart it: `jev-compact dashboard` (plugin: ask Codex to restart the Jev Compact dashboard).
-- Other port: `JEV_COMPACT_DASHBOARD_PORT=43200`.
-- Do not start it: `JEV_COMPACT_DASHBOARD=off`.
+- Restart it: `jevcomp dashboard` (plugin: ask Codex to restart the jevcomp dashboard).
+- Other port: `JEVCOMP_DASHBOARD_PORT=43200`.
+- Do not start it: `JEVCOMP_DASHBOARD=off`.
 
-The dashboard shows values that `jev-compact` can actually measure:
+The dashboard shows values that `jevcomp` can actually measure:
 
 - characters present before and after Jev selection;
 - exact characters removed from retained tool history;
-- how much Jev-selected evidence was already present verbatim after native Codex compaction, so `jev-compact` did not duplicate it;
+- how much Jev-selected evidence was already present verbatim after native Codex compaction, so `jevcomp` did not duplicate it;
 - how much selected evidence was still missing and eligible for restore;
 - the complete hook context actually returned to Codex after compaction, plus the evidence-only portion;
 - real Jev input/output token usage when the provider returns usage counters, including how many Jev requests reported them;
@@ -130,24 +132,24 @@ It deliberately **does not claim Codex billing-token savings** from a `character
 For a terminal summary:
 
 ```bash
-jev-compact stats
+jevcomp stats
 ```
 
 Machine-readable output:
 
 ```bash
-jev-compact stats --json
+jevcomp stats --json
 ```
 
 ## Observe mode
 
-If you want to measure `jev-compact` on your own Codex sessions before allowing it to add context back, use:
+If you want to measure `jevcomp` on your own Codex sessions before allowing it to add context back, use:
 
 ```bash
-jev-compact config mode observe
+jevcomp config mode observe
 ```
 
-In `observe` mode the real Jev selection still runs at `PreCompact`, and after native compaction `jev-compact` performs the same exact membership/dedupe analysis it would use in active mode. It records:
+In `observe` mode the real Jev selection still runs at `PreCompact`, and after native compaction `jevcomp` performs the same exact membership/dedupe analysis it would use in active mode. It records:
 
 - what Jev selected;
 - whether the configured minimum reduction would have allowed a restore;
@@ -156,12 +158,12 @@ In `observe` mode the real Jev selection still runs at `PreCompact`, and after n
 - how much evidence/context would have been returned after the configured restore mode and caps;
 - real Jev request/token/latency metrics when available.
 
-But it returns **no `additionalContext`** to Codex. Native Codex context is therefore unchanged by `jev-compact`; the trade-off is that you still pay the Jev request cost and wait for its selection during compaction.
+But it returns **no `additionalContext`** to Codex. Native Codex context is therefore unchanged by `jevcomp`; the trade-off is that you still pay the Jev request cost and wait for its selection during compaction.
 
 Return to normal behavior with:
 
 ```bash
-jev-compact config mode active
+jevcomp config mode active
 ```
 
 `shadow` remains accepted as an environment/config alias for `observe`, but `observe` is the preferred user-facing name.
@@ -175,16 +177,16 @@ The optimization does not ask another model whether two pieces of text are "basi
 - result content uses a full-content hash, not a matching prefix;
 - the post-compaction rollout must contain a modern checkpoint appended at or after the byte position captured by `PreCompact`.
 
-If the transcript is stale, missing, unsupported, or ambiguous, dedupe is disabled for that restore and `jev-compact` falls back to the previous preservation-first behavior. In other words, a failed membership check can cause duplicate context, but it must not cause retained evidence to disappear.
+If the transcript is stale, missing, unsupported, or ambiguous, dedupe is disabled for that restore and `jevcomp` falls back to the previous preservation-first behavior. In other words, a failed membership check can cause duplicate context, but it must not cause retained evidence to disappear.
 
 ## Restore modes
 
-The restore mode controls how much of the Jev-selected evidence is added back to Codex after native compaction. `jev-compact` disables Codex's generic hook-output spill for its two restore hooks, so these modes and `JEV_COMPACT_RESTORE_MAX_CHARS` are the source of truth for our evidence payload instead of being silently truncated again by Codex. The max-chars setting applies to all three modes; a mode may have a smaller internal limit.
+The restore mode controls how much of the Jev-selected evidence is added back to Codex after native compaction. `jevcomp` disables Codex's generic hook-output spill for its two restore hooks, so these modes and `JEVCOMP_RESTORE_MAX_CHARS` are the source of truth for our evidence payload instead of being silently truncated again by Codex. The max-chars setting applies to all three modes; a mode may have a smaller internal limit.
 
 ### `preserve` — default
 
 ```bash
-jev-compact config restore-mode preserve
+jevcomp config restore-mode preserve
 ```
 
 Uses the most preservation-first reinjection: selected evidence is restored up to the global cap. To stop one enormous tool result from crowding out everything else, an individual very large result is represented by a bounded head+tail excerpt in the injected payload; the full retained normalized archive always stays on disk and its path is included.
@@ -194,22 +196,22 @@ Use this when continuity/exact details matter more than minimizing the extra con
 ### `balanced`
 
 ```bash
-jev-compact config restore-mode balanced
+jevcomp config restore-mode balanced
 ```
 
 Injects a compact index plus a bounded evidence excerpt. The full retained normalized archive stays on disk.
 
-This reduces the context added by `jev-compact` while still giving Codex some exact evidence immediately.
+This reduces the context added by `jevcomp` while still giving Codex some exact evidence immediately.
 
 ### `minimal`
 
 ```bash
-jev-compact config restore-mode minimal
+jevcomp config restore-mode minimal
 ```
 
 Injects only the compact index and file pointers. The full retained normalized archive stays on disk.
 
-This minimizes `jev-compact`'s own post-compaction payload, but Codex receives less selected evidence automatically.
+This minimizes `jevcomp`'s own post-compaction payload, but Codex receives less selected evidence automatically.
 
 Legacy values `full`, `hybrid` and `index` are still accepted as aliases for `preserve`, `balanced` and `minimal`.
 
@@ -218,13 +220,13 @@ Legacy values `full`, `hybrid` and `index` are still accepted as aliases for `pr
 Defaults are preservation-first. You can change the user-facing settings without editing shell files; this matters when Codex is launched from a desktop app.
 
 ```bash
-jev-compact config
-jev-compact config mode observe
-jev-compact config restore-mode balanced
-jev-compact config restore-max-chars 40000
-jev-compact config pin-recent-messages 8
-jev-compact config loss-threshold 0.4
-jev-compact config min-reduction-ratio 0.20
+jevcomp config
+jevcomp config mode observe
+jevcomp config restore-mode balanced
+jevcomp config restore-max-chars 40000
+jevcomp config pin-recent-messages 8
+jevcomp config loss-threshold 0.4
+jevcomp config min-reduction-ratio 0.20
 ```
 
 | Setting | Default | Plain meaning | If you increase it |
@@ -234,11 +236,11 @@ jev-compact config min-reduction-ratio 0.20
 | `restore-max-chars` | `60000` | Hard character cap for the evidence payload in **every** restore mode, before the recovery header/path. `0` disables this global cap; mode-specific limits and the per-result anti-crowding safeguard still apply. | More selected old evidence can return to the model. |
 | `pin-recent-messages` | `6` | Newest normalized messages Jev is not allowed to prune. | Safer/more conservative; less history becomes removable. |
 | `loss-threshold` | `0.5` | Maximum Jev loss-risk accepted for removing/shortening evidence. The action only happens when its risk is **below** this value. | More aggressive pruning because a higher estimated loss risk is tolerated. |
-| `min-reduction-ratio` | `0.15` | Minimum measured character reduction required before a retained sidecar is used. | Requires a larger reduction before jev-compact adds anything back. |
+| `min-reduction-ratio` | `0.15` | Minimum measured character reduction required before a retained sidecar is used. | Requires a larger reduction before jevcomp adds anything back. |
 
 `loss-threshold` is deliberately named around what Jev answers: **risk of losing still-needed information**. If you are unsure, leave it at `0.5`; the dashboard exposes the actual decision scores.
 
-Saved settings live under `~/.config/jev-compact/settings.json`. Environment variables still override saved settings for automation and compatibility: `JEV_COMPACT_MODE`, `JEV_COMPACT_RESTORE_MODE`, `JEV_COMPACT_RESTORE_MAX_CHARS`, `JEV_COMPACT_PIN_RECENT_MESSAGES`, `JEV_COMPACT_LOSS_THRESHOLD`, and `JEV_COMPACT_MIN_REDUCTION_RATIO`. Legacy aliases remain accepted.
+Saved settings live under `~/.config/jevcomp/settings.json`. Environment variables still override saved settings for automation and compatibility: `JEVCOMP_MODE`, `JEVCOMP_RESTORE_MODE`, `JEVCOMP_RESTORE_MAX_CHARS`, `JEVCOMP_PIN_RECENT_MESSAGES`, `JEVCOMP_LOSS_THRESHOLD`, and `JEVCOMP_MIN_REDUCTION_RATIO`. Legacy aliases, including the old `JEV_COMPACT_*` names, remain accepted.
 
 ## Advanced options
 
@@ -246,16 +248,16 @@ These are operational limits. They exist for unusual workloads, provider limits 
 
 | Option | Default | What it controls |
 | --- | ---: | --- |
-| `JEV_COMPACT_CONCURRENCY` | `4` | Maximum Jev requests simultaneously in flight. |
-| `JEV_COMPACT_INDEX_MAX_CHARS` | `12000` | Maximum compact-index size used by `balanced`/`minimal`. |
-| `JEV_COMPACT_MAX_STATE_TOKENS` | `24000` | Internal estimated budget for conversation state shown to Jev. |
-| `JEV_COMPACT_MAX_REQUEST_TOKENS` | `30000` | Internal estimated budget for state + questions per Jev request. |
-| `JEV_COMPACT_TRUNCATE_HEAD_CHARS` | `300` | Result prefix retained for **Shorten**. |
-| `JEV_COMPACT_TIMEOUT_MS` | `20000` | Timeout for one Jev provider request. |
-| `JEV_COMPACT_RETRIES` | `1` | Retries after transient provider/network failures. |
-| `JEV_COMPACT_RESTORE_TTL_MS` | `86400000` | How long a completed compaction may wait for its one-shot restore. |
-| `JEV_COMPACT_STATE_MAX_AGE_MS` | `172800000` | Age at which stale per-session sidecars are removed. |
-| `JEV_COMPACT_GOAL` | automatic | Optional explicit task text supplied to Jev instead of deriving it from recent user prompts. |
+| `JEVCOMP_CONCURRENCY` | `4` | Maximum Jev requests simultaneously in flight. |
+| `JEVCOMP_INDEX_MAX_CHARS` | `12000` | Maximum compact-index size used by `balanced`/`minimal`. |
+| `JEVCOMP_MAX_STATE_TOKENS` | `24000` | Internal estimated budget for conversation state shown to Jev. |
+| `JEVCOMP_MAX_REQUEST_TOKENS` | `30000` | Internal estimated budget for state + questions per Jev request. |
+| `JEVCOMP_TRUNCATE_HEAD_CHARS` | `300` | Result prefix retained for **Shorten**. |
+| `JEVCOMP_TIMEOUT_MS` | `20000` | Timeout for one Jev provider request. |
+| `JEVCOMP_RETRIES` | `1` | Retries after transient provider/network failures. |
+| `JEVCOMP_RESTORE_TTL_MS` | `86400000` | How long a completed compaction may wait for its one-shot restore. |
+| `JEVCOMP_STATE_MAX_AGE_MS` | `172800000` | Age at which stale per-session sidecars are removed. |
+| `JEVCOMP_GOAL` | automatic | Optional explicit task text supplied to Jev instead of deriving it from recent user prompts. |
 
 Provider endpoint/model overrides (`JEV_MODEL`, `JEV_BASE_URL`, `OPENROUTER_JEV_MODEL`, `OPENROUTER_JEV_URL`, `OPENROUTER_HTTP_REFERER`) are intended for provider/development overrides, not normal tuning.
 
@@ -264,8 +266,8 @@ Provider endpoint/model overrides (`JEV_MODEL`, `JEV_BASE_URL`, `OPENROUTER_JEV_
 Normal first-time use is the `setup` command shown at the top of this README. It stores the selected provider/key and prepares the hooks for the installation method in use. Use `configure` when you want to change the provider or key. The five normal behavior settings use the same config directory, so desktop-launched Codex sessions do not depend on shell startup files.
 
 ```bash
-jev-compact configure typesafe
-jev-compact configure openrouter
+jevcomp configure typesafe
+jevcomp configure openrouter
 ```
 
 Environment variables are also supported and override saved configuration:
@@ -278,17 +280,17 @@ or:
 
 ```bash
 export OPENROUTER_API_KEY="..."
-export JEV_COMPACT_PROVIDER=openrouter
+export JEVCOMP_PROVIDER=openrouter
 ```
 
-Key-file overrides are supported through `TYPESAFE_API_KEY_FILE`, `OPENROUTER_API_KEY_FILE`, or `JEV_COMPACT_KEY_FILE` when the provider is selected by environment or by the saved setup preference.
+Key-file overrides are supported through `TYPESAFE_API_KEY_FILE`, `OPENROUTER_API_KEY_FILE`, or `JEVCOMP_KEY_FILE` when the provider is selected by environment or by the saved setup preference.
 
 ## Manual inspection
 
 Preview what Jev would retain from a Codex rollout without modifying Codex:
 
 ```bash
-jev-compact compact rollout.jsonl \
+jevcomp compact rollout.jsonl \
   --context retained.txt \
   --json retained.json
 ```
@@ -304,7 +306,7 @@ The command writes the retained context/JSON and prints compaction statistics to
 - It does **not** semantically judge context it cannot safely read. Encrypted agent content, image/audio content and unsupported history shapes fail open to native Codex behavior.
 - It does **not** need the dashboard to record metrics; they are always saved locally.
 
-Codex's experimental token-budget context reset also emits the standard compact-hook lifecycle. `jev-compact` therefore preserves selected evidence around that reset as well. If your reason for enabling token-budget mode is specifically to force a completely clean context with no old retained evidence, disable `jev-compact` for that workflow.
+Codex's experimental token-budget context reset also emits the standard compact-hook lifecycle. `jevcomp` therefore preserves selected evidence around that reset as well. If your reason for enabling token-budget mode is specifically to force a completely clean context with no old retained evidence, disable `jevcomp` for that workflow.
 
 ## Data files
 
@@ -312,9 +314,9 @@ Data directory precedence:
 
 ```text
 PLUGIN_DATA
-→ JEV_COMPACT_DATA_DIR
+→ JEVCOMP_DATA_DIR
 → active Codex plugin data directory (including when CLI is run from a release or npm package)
-→ CODEX_HOME/jev-compact (or ~/.codex/jev-compact)
+→ CODEX_HOME/jevcomp (or ~/.codex/jevcomp)
 ```
 
 Each active session can have:
@@ -324,7 +326,7 @@ Each active session can have:
 - structured retained `.messages.json`;
 - local `history.jsonl` observability data.
 
-Old per-session sidecars are cleaned up automatically. History is retained for dashboard/statistics use. `setup` keeps its stable compiled runtime under `~/.codex/jev-compact/runtime` (or under `CODEX_HOME` when set) unless `JEV_COMPACT_RUNTIME_DIR` overrides it.
+Old per-session sidecars are cleaned up automatically. History is retained for dashboard/statistics use. `setup` keeps its stable compiled runtime under `~/.codex/jevcomp/runtime` (or under `CODEX_HOME` when set) unless `JEVCOMP_RUNTIME_DIR` overrides it.
 
 ## Development
 
@@ -342,8 +344,8 @@ Independent implementation informed by the MIT-licensed:
 
 - `IAmUnbounded/save-token-jev-clean`
 - `leonaaardob/fast-dev-compaction`
-- `tamaratran/fast-jev-compaction`
-- `fatelei/jev-compact` (post-compaction membership/backfill idea)
+- `tamaratran/fast-jevcompion`
+- `fatelei/jevcomp` (post-compaction membership/backfill idea)
 - `GhalebDweikat/winnow` (observe/shadow-mode methodology)
 
 See `AUDIT.md` for the detailed behavior comparison and Codex compatibility notes.

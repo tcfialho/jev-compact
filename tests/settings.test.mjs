@@ -7,7 +7,7 @@ import { resetUserSettings, setUserSetting, settingsPath, userSettings } from '.
 
 test('user-facing settings persist without shell environment variables', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jev-settings-'));
-  const env = { JEV_COMPACT_CONFIG_DIR: root };
+  const env = { JEVCOMP_CONFIG_DIR: root };
   await setUserSetting('mode', 'observe', env);
   await setUserSetting('restore-mode', 'balanced', env);
   await setUserSetting('restore-max-chars', '42000', env);
@@ -29,11 +29,11 @@ test('user-facing settings persist without shell environment variables', async (
 
 test('environment variables override saved user settings and reset restores defaults', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jev-settings-override-'));
-  const base = { JEV_COMPACT_CONFIG_DIR: root };
+  const base = { JEVCOMP_CONFIG_DIR: root };
   await setUserSetting('mode', 'observe', base);
   await setUserSetting('restore-mode', 'minimal', base);
   await setUserSetting('loss-threshold', '0.2', base);
-  const overridden = userSettings({ ...base, JEV_COMPACT_MODE: 'active', JEV_COMPACT_RESTORE_MODE: 'preserve', JEV_COMPACT_LOSS_THRESHOLD: '0.7' });
+  const overridden = userSettings({ ...base, JEVCOMP_MODE: 'active', JEVCOMP_RESTORE_MODE: 'preserve', JEVCOMP_LOSS_THRESHOLD: '0.7' });
   assert.equal(overridden.mode, 'active');
   assert.equal(overridden.restoreMode, 'preserve');
   assert.equal(overridden.lossThreshold, 0.7);
@@ -46,7 +46,7 @@ test('environment variables override saved user settings and reset restores defa
 
 test('invalid persisted values are rejected before they can affect hooks', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jev-settings-invalid-'));
-  const env = { JEV_COMPACT_CONFIG_DIR: root };
+  const env = { JEVCOMP_CONFIG_DIR: root };
   await assert.rejects(setUserSetting('loss-threshold', '2', env), /between 0 and 1/);
   await assert.rejects(setUserSetting('mode', 'turbo', env), /active or observe/);
   await assert.rejects(setUserSetting('restore-max-chars', '-1', env), /non-negative integer/);
@@ -55,7 +55,7 @@ test('invalid persisted values are rejected before they can affect hooks', async
 
 test('manually corrupted settings file is sanitized back to safe defaults', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jev-settings-corrupt-'));
-  const env = { JEV_COMPACT_CONFIG_DIR: root };
+  const env = { JEVCOMP_CONFIG_DIR: root };
   await writeFile(settingsPath(env), JSON.stringify({
     mode: 'turbo',
     restoreMode: 'turbo',
@@ -75,6 +75,6 @@ test('manually corrupted settings file is sanitized back to safe defaults', asyn
 
 test('shadow remains a compatible alias for observe mode', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jev-settings-shadow-'));
-  const env = { JEV_COMPACT_CONFIG_DIR: root, JEV_COMPACT_MODE: 'shadow' };
+  const env = { JEVCOMP_CONFIG_DIR: root, JEVCOMP_MODE: 'shadow' };
   assert.equal(userSettings(env).mode, 'observe');
 });

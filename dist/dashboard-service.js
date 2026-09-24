@@ -3,15 +3,17 @@ import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { LEGACY_DASHBOARD_SERVICE } from './legacy.js';
 import { dataDir } from './store.js';
 export const DEFAULT_DASHBOARD_PORT = 43127;
+const DASHBOARD_SERVICES = ['jevcomp-dashboard', LEGACY_DASHBOARD_SERVICE];
 const defaultCliPath = fileURLToPath(new URL('./cli.js', import.meta.url));
 export function dashboardPort(env = process.env) {
-    const port = Number(env.JEV_COMPACT_DASHBOARD_PORT);
+    const port = Number(env.JEVCOMP_DASHBOARD_PORT);
     return Number.isInteger(port) && port > 0 && port < 65536 ? port : DEFAULT_DASHBOARD_PORT;
 }
 export function dashboardAutostart(env = process.env) {
-    return env.JEV_COMPACT_DASHBOARD !== 'off';
+    return env.JEVCOMP_DASHBOARD !== 'off';
 }
 export function dashboardInstancePath(port, env = process.env) {
     return join(dataDir(env), `dashboard-${port}.json`);
@@ -50,8 +52,19 @@ export async function runningDashboard(port, env = process.env) {
         if (!response.ok)
             return undefined;
         const health = await response.json();
-        return health.service === 'jev-compact-dashboard' && health.pid === instance.pid && health.instanceId === instance.instanceId
+        return DASHBOARD_SERVICES.includes(health.service) && health.pid === instance.pid && health.instanceId === instance.instanceId
             ? { ...instance, entry: typeof health.entry === 'string' ? health.entry : undefined } : undefined;
+    }
+    catch {
+        return undefined;
+    }
+}
+/** Finds a dashboard of ours whose instance file lives elsewhere, such as one started under the old name. */
+async function untrackedDashboard(port) {
+    const url = `http://127.0.0.1:${port}/`;
+    try {
+        const health = await (await fetch(new URL('/api/health', url), { signal: AbortSignal.timeout(1000) })).json();
+        return DASHBOARD_SERVICES.includes(health.service) && Number.isSafeInteger(health.pid) ? { pid: health.pid, url } : undefined;
     }
     catch {
         return undefined;
@@ -59,8 +72,10 @@ export async function runningDashboard(port, env = process.env) {
 }
 async function stopDashboard(port, env) {
     const previous = await runningDashboard(port, env);
-    if (!previous)
-        return;
+    if (previous)
+        await stopProcess(previous, port);
+}
+async function stopProcess(previous, port) {
     try {
         process.kill(previous.pid);
     }
@@ -81,12 +96,24 @@ async function stopDashboard(port, env) {
     throw new Error(`previous Jev dashboard did not stop on port ${port}`);
 }
 async function spawnDashboard(port, env, cliPath) {
+    try {
+        return await spawnOnFreePort(port, env, cliPath);
+    }
+    catch (error) {
+        const orphan = error instanceof Error && error.message.includes('EADDRINUSE') ? await untrackedDashboard(port) : undefined;
+        if (!orphan)
+            throw error;
+        await stopProcess(orphan, port);
+        return spawnOnFreePort(port, env, cliPath);
+    }
+}
+async function spawnOnFreePort(port, env, cliPath) {
     const instanceId = randomUUID();
     const child = spawn(process.execPath, [cliPath, 'dashboard', '--port', String(port), '--background'], {
         detached: true,
         stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true,
-        env: { ...env, JEV_COMPACT_DASHBOARD_INSTANCE_ID: instanceId },
+        env: { ...env, JEVCOMP_DASHBOARD_INSTANCE_ID: instanceId },
     });
     child.unref();
     return new Promise((resolve, reject) => {

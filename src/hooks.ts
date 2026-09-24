@@ -60,15 +60,15 @@ async function migrateLegacyHooks(input: HookInput, env: Record<string, string |
   if (!env.PLUGIN_ROOT) return false;
   const codexHome = env.CODEX_HOME ?? join(homedir(), '.codex');
   const sessionHash = createHash('sha256').update(input.session_id).digest('hex');
-  const marker = join(codexHome, 'jev-compact', 'migrations', `${sessionHash}.skip`);
+  const marker = join(codexHome, 'jevcomp', 'migrations', `${sessionHash}.skip`);
   if (input.hook_event_name === 'SessionStart' && input.source && input.source !== 'compact') {
     try { await rm(marker, { force: true }); }
-    catch (error) { return `Jev Compact could not resume plugin hooks: ${String(error)}`; }
+    catch (error) { return `jevcomp could not resume plugin hooks: ${String(error)}`; }
   }
   try { await readFile(marker); return true; }
   catch (error) {
     if (!error || typeof error !== 'object' || !('code' in error) || error.code !== 'ENOENT') {
-      return `Jev Compact could not inspect migration state: ${String(error)}`;
+      return `jevcomp could not inspect migration state: ${String(error)}`;
     }
   }
   if (!(await inspectHooks(env)).events.length) return false;
@@ -76,12 +76,12 @@ async function migrateLegacyHooks(input: HookInput, env: Record<string, string |
     await mkdir(dirname(marker), { recursive: true, mode: 0o700 });
     await writeFile(marker, '', { flag: 'wx', mode: 0o600 });
     await uninstallHooks(env);
-  } catch (error) { return `Jev Compact could not migrate older hooks: ${String(error)}`; }
+  } catch (error) { return `jevcomp could not migrate older hooks: ${String(error)}`; }
   return true;
 }
 
 function requestedProvider(env: Record<string, string | undefined>): JevProvider | undefined {
-  const value = env.JEV_COMPACT_PROVIDER;
+  const value = env.JEVCOMP_PROVIDER;
   return value === 'typesafe' || value === 'openrouter' || value === 'auto' ? value : undefined;
 }
 
@@ -171,7 +171,7 @@ function renderRestorePayload(
 }
 
 async function restore(input: HookInput, event: 'SessionStart' | 'UserPromptSubmit', env: Record<string, string | undefined>): Promise<Record<string, unknown>> {
-  const ttl = Math.max(0, num(env, 'JEV_COMPACT_RESTORE_TTL_MS', 86_400_000));
+  const ttl = Math.max(0, num(env, 'JEVCOMP_RESTORE_TTL_MS', 86_400_000));
   const preview = await peekReady(input.session_id, ttl, env);
   if (!preview) return { continue: true, suppressOutput: true };
 
@@ -205,7 +205,7 @@ async function restore(input: HookInput, event: 'SessionStart' | 'UserPromptSubm
     selectedDecisions,
     preview.index,
     fallbackContext,
-    numAny(env, ['JEV_COMPACT_INDEX_MAX_CHARS', 'JEV_COMPACT_INDEX_CHARS'], 12_000),
+    numAny(env, ['JEVCOMP_INDEX_MAX_CHARS', 'JEVCOMP_INDEX_CHARS'], 12_000),
   );
   // A single setting means one thing in every restore mode: maximum evidence payload.
   if (cap > 0) payload = capContext(payload, cap);
@@ -293,8 +293,8 @@ async function restore(input: HookInput, event: 'SessionStart' | 'UserPromptSubm
 
 async function dashboardNotice(env: Record<string, string | undefined>, options: HookOptions): Promise<string | undefined> {
   if (!options.startDashboard || !dashboardAutostart(env)) return undefined;
-  try { return `Jev Compact dashboard: ${await ensureDashboard(dashboardPort(env), env)}`; }
-  catch (error) { return `Jev Compact dashboard unavailable: ${error instanceof Error ? error.message : String(error)}`; }
+  try { return `jevcomp dashboard: ${await ensureDashboard(dashboardPort(env), env)}`; }
+  catch (error) { return `jevcomp dashboard unavailable: ${error instanceof Error ? error.message : String(error)}`; }
 }
 
 export interface HookOptions { startDashboard?: boolean }
@@ -307,7 +307,7 @@ export async function handleHook(value: unknown, env: Record<string, string | un
   if (input.hook_event_name === 'SessionStart' && input.source !== 'compact') {
     const notices: string[] = [];
     const provider = resolveProvider({ provider: requestedProvider(env), env });
-    if (env.PLUGIN_ROOT && !resolveApiKey(provider, { env })) notices.push('Jev Compact needs an API key. Open the plugin and choose Configure with OpenRouter or TypeSafe.');
+    if (env.PLUGIN_ROOT && !resolveApiKey(provider, { env })) notices.push('jevcomp needs an API key. Open the plugin and choose Configure with OpenRouter or TypeSafe.');
     const dashboard = await dashboardNotice(env, options);
     if (dashboard && (input.source === 'startup' || input.source === 'resume')) notices.push(dashboard);
     if (notices.length) return { continue: true, systemMessage: notices.join(' · ') };
@@ -319,10 +319,10 @@ export async function handleHook(value: unknown, env: Record<string, string | un
     await discardPendingState(input.session_id, env);
     if (!input.transcript_path) {
       await tryAppendHistory({ at: new Date().toISOString(), runId, sessionId: input.session_id, turnId: input.turn_id, trigger: input.trigger, model: input.model, provider: providerName(env), phase: 'precompact', status: 'failed', detail: 'transcript path unavailable' }, env);
-      return { continue: true, systemMessage: 'jev-compact: no transcript path; native compaction only' };
+      return { continue: true, systemMessage: 'jevcomp: no transcript path; native compaction only' };
     }
     try {
-      await sweep(env, num(env, 'JEV_COMPACT_STATE_MAX_AGE_MS', 48 * 60 * 60 * 1000));
+      await sweep(env, num(env, 'JEVCOMP_STATE_MAX_AGE_MS', 48 * 60 * 60 * 1000));
       const rollout = await loadCodexRolloutSnapshot(input.transcript_path);
       const messages = rollout.messages;
       if (messages.length < 2) {
@@ -336,16 +336,16 @@ export async function handleHook(value: unknown, env: Record<string, string | un
         provider,
         env,
         model: transport.model,
-        goal: env.JEV_COMPACT_GOAL,
+        goal: env.JEVCOMP_GOAL,
         baseUrl: transport.baseUrl,
         lossThreshold: settings.lossThreshold,
         preserveRecentMessages: settings.pinRecentMessages,
-        maxStateTokens: Math.max(1_000, num(env, 'JEV_COMPACT_MAX_STATE_TOKENS', 24_000)),
-        maxRequestTokens: Math.max(2_000, num(env, 'JEV_COMPACT_MAX_REQUEST_TOKENS', 30_000)),
-        truncateHeadChars: Math.max(0, num(env, 'JEV_COMPACT_TRUNCATE_HEAD_CHARS', 300)),
-        maxConcurrentRequests: Math.max(1, num(env, 'JEV_COMPACT_CONCURRENCY', 4)),
-        timeoutMs: Math.max(1, num(env, 'JEV_COMPACT_TIMEOUT_MS', 20_000)),
-        retries: Math.max(0, num(env, 'JEV_COMPACT_RETRIES', 1)),
+        maxStateTokens: Math.max(1_000, num(env, 'JEVCOMP_MAX_STATE_TOKENS', 24_000)),
+        maxRequestTokens: Math.max(2_000, num(env, 'JEVCOMP_MAX_REQUEST_TOKENS', 30_000)),
+        truncateHeadChars: Math.max(0, num(env, 'JEVCOMP_TRUNCATE_HEAD_CHARS', 300)),
+        maxConcurrentRequests: Math.max(1, num(env, 'JEVCOMP_CONCURRENCY', 4)),
+        timeoutMs: Math.max(1, num(env, 'JEVCOMP_TIMEOUT_MS', 20_000)),
+        retries: Math.max(0, num(env, 'JEVCOMP_RETRIES', 1)),
       });
       const minimum = settings.minReductionRatio;
       const wouldApply = reductionRatio(result) >= minimum;
@@ -367,7 +367,7 @@ export async function handleHook(value: unknown, env: Record<string, string | un
           runId,
           stats: result.stats,
           decisions: result.decisions,
-          index: renderIndex(result.messages, result.decisions, numAny(env, ['JEV_COMPACT_INDEX_MAX_CHARS', 'JEV_COMPACT_INDEX_CHARS'], 12_000)),
+          index: renderIndex(result.messages, result.decisions, numAny(env, ['JEVCOMP_INDEX_MAX_CHARS', 'JEVCOMP_INDEX_CHARS'], 12_000)),
         },
         renderMessages(result.messages),
         env,
@@ -381,10 +381,10 @@ export async function handleHook(value: unknown, env: Record<string, string | un
         ...(settings.mode === 'observe' ? { detail: wouldApply ? 'observe mode: selection would be eligible for restore' : `observe mode: would skip because reduction is below ${minimum}` } : {}),
       }, env);
       if (settings.mode === 'observe') return { continue: true, suppressOutput: true };
-      return { continue: true, systemMessage: `jev-compact: prepared ${Math.round(reductionRatio(result) * 100)}% smaller retained context (${result.stats.callsDropped} calls dropped, ${result.stats.resultsTruncated} results truncated)` };
+      return { continue: true, systemMessage: `jevcomp: prepared ${Math.round(reductionRatio(result) * 100)}% smaller retained context (${result.stats.callsDropped} calls dropped, ${result.stats.resultsTruncated} results truncated)` };
     } catch (error) {
       await tryAppendHistory({ at: new Date().toISOString(), runId, sessionId: input.session_id, turnId: input.turn_id, trigger: input.trigger, model: input.model, provider: providerName(env), phase: 'precompact', status: 'failed', detail: error instanceof Error ? error.message : String(error) }, env);
-      return { continue: true, systemMessage: `jev-compact: native compaction fallback (${error instanceof Error ? error.message : String(error)})` };
+      return { continue: true, systemMessage: `jevcomp: native compaction fallback (${error instanceof Error ? error.message : String(error)})` };
     }
   }
   if (input.hook_event_name === 'PostCompact') {

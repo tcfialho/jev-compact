@@ -243,7 +243,7 @@ export async function stats(env = process.env) {
 function page(): string {
   return `<!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>jev-compact · dashboard</title>
+<title>jevcomp · dashboard</title>
 <style>
 :root{color-scheme:dark;--bg:#151514;--panel:#20201f;--panel2:#252524;--line:#393936;--text:#f3f3f1;--muted:#a2a29e;--green:#5bc66b;--bar:#73816e;--orange:#ee7847;--amber:#e2ac42;--blue:#8cacfa}
 *{box-sizing:border-box}
@@ -294,7 +294,7 @@ footer{color:var(--muted);font-size:11px;margin-top:18px}
 @media(max-width:850px){.hero,.pair{grid-template-columns:1fr}.reduction-number{margin:30px 0}.detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:540px){main{padding:18px 12px 42px}.top{align-items:flex-start}.top-left{display:block}.hero-metrics{grid-template-rows:auto}.flow{grid-template-columns:1fr}.arrow{display:none}.detail-grid{grid-template-columns:1fr 1fr}table{min-width:660px}}
 </style></head><body><main>
-<header class="top"><div class="top-left"><h1>jev-compact</h1><span class="top-note">compactação do Codex</span></div><span class="live" id="live">dados locais · atualização a cada 5s</span></header>
+<header class="top"><div class="top-left"><h1>jevcomp</h1><span class="top-note">compactação do Codex</span></div><span class="live" id="live">dados locais · atualização a cada 5s</span></header>
 <div id="error"></div>
 <section class="hero" aria-label="Resumo do Jev">
  <div class="panel reduction-card"><div><h2>Quanto texto foi reduzido?</h2><p class="sub">Nas seleções entregues ao Codex.</p></div><strong class="reduction-number" id="reduction">—</strong><div class="reduction-foot"><div class="track"><i id="reduction-bar"></i></div><p><b id="removed">—</b><br><span class="muted">do texto analisado nessas seleções</span></p></div></div>
@@ -313,7 +313,7 @@ footer{color:var(--muted);font-size:11px;margin-top:18px}
 <section class="section"><div class="section-heading"><h2>Detalhes da integração</h2><p class="sub">Informações adicionais registradas pelos hooks locais.</p></div><div class="detail-grid" id="details"></div></section>
 <section class="section"><div class="section-heading"><h2>Compactações recentes</h2><p class="sub">O que aconteceu em cada compactação.</p></div><div class="panel table-panel"><table><thead><tr><th>Quando</th><th>Resultado</th><th>Texto adicional</th></tr></thead><tbody id="runs"></tbody></table></div></section>
 <section class="section"><div class="section-heading"><h2>Decisões recentes</h2><p class="sub">Os dois percentuais de cada linha estimam o risco de perder informação útil ao remover ou resumir o resultado. Quanto maior o percentual, maior o risco.</p></div><div class="panel table-panel"><table><thead><tr><th>Ferramenta</th><th>Decisão</th><th>Entrada</th><th>Risco de remover / resumir</th><th class="num">Caracteres retirados</th></tr></thead><tbody id="decisions"></tbody></table></div></section>
-<footer>Dados do histórico local do jev-compact. Caracteres retirados não representam economia de tokens cobrados pelo Codex. A dashboard escuta somente em 127.0.0.1.</footer>
+<footer>Dados do histórico local do jevcomp. Caracteres retirados não representam economia de tokens cobrados pelo Codex. A dashboard escuta somente em 127.0.0.1.</footer>
 </main><script>
 const f=n=>Number(n||0).toLocaleString('pt-BR');
 const pct=n=>(Number(n||0)*100).toFixed(1)+'%';
@@ -402,9 +402,9 @@ export async function startDashboard(port = 43127, env = process.env): Promise<{
       const url = new URL(req.url ?? '/', `http://${host}`);
       if (url.pathname === '/api/health') return json(res, {
         ok: true,
-        service: 'jev-compact-dashboard',
+        service: 'jevcomp-dashboard',
         pid: process.pid,
-        instanceId: env.JEV_COMPACT_DASHBOARD_INSTANCE_ID ?? null,
+        instanceId: env.JEVCOMP_DASHBOARD_INSTANCE_ID ?? null,
         entry: process.argv[1] ?? null,
       });
       if (url.pathname === '/api/stats') return json(res, await currentStats());

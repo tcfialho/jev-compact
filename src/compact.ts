@@ -301,14 +301,14 @@ async function askBatches(groups: QuestionBatch[], state: JevState, asker: JevAs
 
 function truncateResultOutput(text: string, head: number): string {
   const prefix = head ? `${text.slice(0, head)}\n` : '';
-  return `${prefix}[jev-compact omitted ${Math.max(0, text.length - head)} chars; rerun tool if needed]`;
+  return `${prefix}[jevcomp omitted ${Math.max(0, text.length - head)} chars; rerun tool if needed]`;
 }
 
 function truncatedResultLength(originalChars: number, head: number): number {
   if (originalChars <= head) return originalChars;
   const omitted = Math.max(0, originalChars - head);
   const prefixChars = head > 0 ? Math.min(head, originalChars) + 1 : 0;
-  return prefixChars + `[jev-compact omitted ${omitted} chars; rerun tool if needed]`.length;
+  return prefixChars + `[jevcomp omitted ${omitted} chars; rerun tool if needed]`.length;
 }
 
 function truncationSavings(originalChars: number, head: number): number {

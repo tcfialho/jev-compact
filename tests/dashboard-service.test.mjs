@@ -24,10 +24,10 @@ test('plugin session start opens one shared dashboard and later prompts reuse it
     PLUGIN_ROOT: join(root, 'plugin'),
     PLUGIN_DATA: join(root, 'data'),
     CODEX_HOME: join(root, 'codex-home'),
-    JEV_COMPACT_CONFIG_DIR: join(root, 'config'),
+    JEVCOMP_CONFIG_DIR: join(root, 'config'),
     OPENROUTER_API_KEY: 'test-key',
-    JEV_COMPACT_PROVIDER: 'openrouter',
-    JEV_COMPACT_DASHBOARD_PORT: String(port),
+    JEVCOMP_PROVIDER: 'openrouter',
+    JEVCOMP_DASHBOARD_PORT: String(port),
   };
   t.after(async () => {
     const running = await runningDashboard(port, env);
@@ -35,7 +35,7 @@ test('plugin session start opens one shared dashboard and later prompts reuse it
   });
 
   const started = await handleHook({ session_id: 'dashboard', hook_event_name: 'SessionStart', source: 'startup' }, env, { startDashboard: true });
-  assert.equal(started.systemMessage, `Jev Compact dashboard: http://127.0.0.1:${port}/`);
+  assert.equal(started.systemMessage, `jevcomp dashboard: http://127.0.0.1:${port}/`);
   const first = await runningDashboard(port, env);
   assert.ok(first);
 
@@ -48,7 +48,7 @@ test('plugin session start opens one shared dashboard and later prompts reuse it
 test('a dashboard left by another installed version is replaced', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'jev-dashboard-version-'));
   const port = await freePort();
-  const env = { ...process.env, JEV_COMPACT_DATA_DIR: join(root, 'data') };
+  const env = { ...process.env, JEVCOMP_DATA_DIR: join(root, 'data') };
   const olderCli = join(root, 'older', 'dist', 'cli.js');
   await cp(fileURLToPath(new URL('../dist', import.meta.url)), dirname(olderCli), { recursive: true });
   await writeFile(join(root, 'older', 'package.json'), '{"type":"module"}');

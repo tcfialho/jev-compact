@@ -28,8 +28,8 @@ test('PreCompact -> PostCompact -> SessionStart works end to end', async (t) => 
   ];
   await writeFile(rollout, rows.map(JSON.stringify).join('\n'));
   const env = {
-    JEV_COMPACT_DATA_DIR: join(root, 'data'), JEV_COMPACT_PROVIDER: 'typesafe', TYPESAFE_API_KEY: 'test',
-    JEV_BASE_URL: `http://127.0.0.1:${port}`, JEV_COMPACT_PRESERVE_RECENT: '0', JEV_COMPACT_MIN_REDUCTION: '0', JEV_COMPACT_RETRIES: '0'
+    JEVCOMP_DATA_DIR: join(root, 'data'), JEVCOMP_PROVIDER: 'typesafe', TYPESAFE_API_KEY: 'test',
+    JEV_BASE_URL: `http://127.0.0.1:${port}`, JEVCOMP_PRESERVE_RECENT: '0', JEVCOMP_MIN_REDUCTION: '0', JEVCOMP_RETRIES: '0'
   };
   const pre = await handleHook({ session_id: 's', turn_id: 't', hook_event_name: 'PreCompact', transcript_path: rollout, trigger: 'manual', model: 'gpt-test' }, env);
   assert.match(pre.systemMessage, /prepared/);
@@ -63,9 +63,9 @@ test('observe mode runs the full compaction analysis but never injects context',
   const before = rows.map(JSON.stringify).join('\n');
   await writeFile(rollout, before);
   const env = {
-    JEV_COMPACT_DATA_DIR: join(root, 'data'), JEV_COMPACT_PROVIDER: 'typesafe', TYPESAFE_API_KEY: 'test',
-    JEV_BASE_URL: `http://127.0.0.1:${port}`, JEV_COMPACT_PRESERVE_RECENT: '0',
-    JEV_COMPACT_MIN_REDUCTION: '1', JEV_COMPACT_RETRIES: '0', JEV_COMPACT_MODE: 'observe',
+    JEVCOMP_DATA_DIR: join(root, 'data'), JEVCOMP_PROVIDER: 'typesafe', TYPESAFE_API_KEY: 'test',
+    JEV_BASE_URL: `http://127.0.0.1:${port}`, JEVCOMP_PRESERVE_RECENT: '0',
+    JEVCOMP_MIN_REDUCTION: '1', JEVCOMP_RETRIES: '0', JEVCOMP_MODE: 'observe',
   };
   const pre = await handleHook({ session_id: 'observe-e2e', turn_id: 't', hook_event_name: 'PreCompact', transcript_path: rollout, trigger: 'manual' }, env);
   assert.equal(pre.systemMessage, undefined);
@@ -79,7 +79,7 @@ test('observe mode runs the full compaction analysis but never injects context',
   const start = await handleHook({ session_id: 'observe-e2e', hook_event_name: 'SessionStart', source: 'compact', transcript_path: rollout }, env);
   assert.equal(start.hookSpecificOutput, undefined);
 
-  const history = (await readFile(join(env.JEV_COMPACT_DATA_DIR, 'history.jsonl'), 'utf8')).trim().split(/\n/).map(JSON.parse);
+  const history = (await readFile(join(env.JEVCOMP_DATA_DIR, 'history.jsonl'), 'utf8')).trim().split(/\n/).map(JSON.parse);
   const prepared = history.find((row) => row.status === 'prepared');
   const observed = history.find((row) => row.status === 'observed');
   assert.equal(prepared.operationMode, 'observe');

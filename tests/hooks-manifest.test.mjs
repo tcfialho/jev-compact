@@ -30,7 +30,7 @@ test('plugin hook commands avoid shell-specific variable expansion', () => {
   for (const handler of handlers) {
     assert.equal(handler.commandWindows, undefined);
     assert.doesNotMatch(handler.command, /%PLUGIN_ROOT%|\$\{?PLUGIN_ROOT|\$env:/);
-    assert.match(handler.command, /--jev-compact$/);
+    assert.match(handler.command, /--jevcomp$/);
   }
 });
 
@@ -38,11 +38,11 @@ test('plugin hook command runs from any working directory in every shell Codex m
   const root = await mkdtemp(join(tmpdir(), 'jev-hook-shells-'));
   const env = {
     ...process.env,
-    JEV_COMPACT_DASHBOARD: 'off',
+    JEVCOMP_DASHBOARD: 'off',
     PLUGIN_ROOT: pluginRoot,
     PLUGIN_DATA: join(root, 'data'),
     CODEX_HOME: join(root, 'codex-home'),
-    JEV_COMPACT_CONFIG_DIR: join(root, 'config'),
+    JEVCOMP_CONFIG_DIR: join(root, 'config'),
     OPENROUTER_API_KEY: '',
     TYPESAFE_API_KEY: '',
   };

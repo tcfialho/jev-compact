@@ -24,7 +24,7 @@ const DIRECT_URL = 'https://api.typesafe.ai/v1/systemone';
 const OPENROUTER_URL = 'https://openrouter.ai/api/alpha/decisions';
 
 export function configDir(env: Env = process.env): string {
-  return env.JEV_COMPACT_CONFIG_DIR ?? join(homedir(), '.config', 'jev-compact');
+  return env.JEVCOMP_CONFIG_DIR ?? join(homedir(), '.config', 'jevcomp');
 }
 
 export function defaultKeyPath(provider: Exclude<JevProvider, 'auto'>, env: Env = process.env): string {
@@ -75,8 +75,8 @@ export function hasSavedProviderKey(provider: Exclude<JevProvider, 'auto'>, env:
 export function resolveApiKey(provider: Exclude<JevProvider, 'auto'>, options: Pick<JevClientOptions, 'apiKey' | 'env'> = {}): string {
   if (options.apiKey) return options.apiKey;
   const env = options.env ?? process.env;
-  const preferred = env.JEV_COMPACT_PROVIDER ?? savedProvider(env);
-  const genericKeyFile = preferred === provider ? env.JEV_COMPACT_KEY_FILE : undefined;
+  const preferred = env.JEVCOMP_PROVIDER ?? savedProvider(env);
+  const genericKeyFile = preferred === provider ? env.JEVCOMP_KEY_FILE : undefined;
   if (provider === 'openrouter') {
     if (env.OPENROUTER_API_KEY) return env.OPENROUTER_API_KEY;
     return readKey([
@@ -96,7 +96,7 @@ export function resolveApiKey(provider: Exclude<JevProvider, 'auto'>, options: P
 
 export function resolveProvider(options: Pick<JevClientOptions, 'provider' | 'env' | 'apiKey'> = {}): Exclude<JevProvider, 'auto'> {
   const env = options.env ?? process.env;
-  const requested = options.provider ?? (env.JEV_COMPACT_PROVIDER as JevProvider | undefined) ?? savedProvider(env) ?? 'auto';
+  const requested = options.provider ?? (env.JEVCOMP_PROVIDER as JevProvider | undefined) ?? savedProvider(env) ?? 'auto';
   if (requested === 'typesafe' || requested === 'openrouter') return requested;
   if (options.apiKey) return 'typesafe';
   if (resolveApiKey('typesafe', { env })) return 'typesafe';
@@ -172,13 +172,13 @@ export class JevClient implements JevAsker {
     const env = this.options.env ?? process.env;
     const { provider, apiKey, model, baseUrl: url } = providerConfig(this.options);
     if (!apiKey) throw new Error(provider === 'openrouter' ? 'OPENROUTER_API_KEY is not configured' : 'TYPESAFE_API_KEY is not configured');
-    const timeoutValue = this.options.timeoutMs ?? (env.JEV_COMPACT_TIMEOUT_MS?.trim() ? Number(env.JEV_COMPACT_TIMEOUT_MS) : 20_000);
-    const retryValue = this.options.retries ?? (env.JEV_COMPACT_RETRIES?.trim() ? Number(env.JEV_COMPACT_RETRIES) : 1);
+    const timeoutValue = this.options.timeoutMs ?? (env.JEVCOMP_TIMEOUT_MS?.trim() ? Number(env.JEVCOMP_TIMEOUT_MS) : 20_000);
+    const retryValue = this.options.retries ?? (env.JEVCOMP_RETRIES?.trim() ? Number(env.JEVCOMP_RETRIES) : 1);
     const timeout = Number.isFinite(timeoutValue) ? Math.max(1, Math.floor(timeoutValue)) : 20_000;
     const retries = Number.isFinite(retryValue) ? Math.max(0, Math.floor(retryValue)) : 1;
     const headers: Record<string, string> = { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' };
     if (provider === 'openrouter') {
-      headers['x-openrouter-title'] = 'jev-compact';
+      headers['x-openrouter-title'] = 'jevcomp';
       if (env.OPENROUTER_HTTP_REFERER) headers['http-referer'] = env.OPENROUTER_HTTP_REFERER;
     }
     return this.resolved = { provider, apiKey, model, url, timeout, retries, headers, fetcher: this.options.fetch ?? fetch };

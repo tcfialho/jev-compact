@@ -5,7 +5,7 @@ import { join } from 'node:path';
 const DIRECT_URL = 'https://api.typesafe.ai/v1/systemone';
 const OPENROUTER_URL = 'https://openrouter.ai/api/alpha/decisions';
 export function configDir(env = process.env) {
-    return env.JEV_COMPACT_CONFIG_DIR ?? join(homedir(), '.config', 'jev-compact');
+    return env.JEVCOMP_CONFIG_DIR ?? join(homedir(), '.config', 'jevcomp');
 }
 export function defaultKeyPath(provider, env = process.env) {
     return join(configDir(env), provider === 'openrouter' ? 'openrouter_api_key' : 'typesafe_api_key');
@@ -66,8 +66,8 @@ export function resolveApiKey(provider, options = {}) {
     if (options.apiKey)
         return options.apiKey;
     const env = options.env ?? process.env;
-    const preferred = env.JEV_COMPACT_PROVIDER ?? savedProvider(env);
-    const genericKeyFile = preferred === provider ? env.JEV_COMPACT_KEY_FILE : undefined;
+    const preferred = env.JEVCOMP_PROVIDER ?? savedProvider(env);
+    const genericKeyFile = preferred === provider ? env.JEVCOMP_KEY_FILE : undefined;
     if (provider === 'openrouter') {
         if (env.OPENROUTER_API_KEY)
             return env.OPENROUTER_API_KEY;
@@ -88,7 +88,7 @@ export function resolveApiKey(provider, options = {}) {
 }
 export function resolveProvider(options = {}) {
     const env = options.env ?? process.env;
-    const requested = options.provider ?? env.JEV_COMPACT_PROVIDER ?? savedProvider(env) ?? 'auto';
+    const requested = options.provider ?? env.JEVCOMP_PROVIDER ?? savedProvider(env) ?? 'auto';
     if (requested === 'typesafe' || requested === 'openrouter')
         return requested;
     if (options.apiKey)
@@ -167,13 +167,13 @@ export class JevClient {
         const { provider, apiKey, model, baseUrl: url } = providerConfig(this.options);
         if (!apiKey)
             throw new Error(provider === 'openrouter' ? 'OPENROUTER_API_KEY is not configured' : 'TYPESAFE_API_KEY is not configured');
-        const timeoutValue = this.options.timeoutMs ?? (env.JEV_COMPACT_TIMEOUT_MS?.trim() ? Number(env.JEV_COMPACT_TIMEOUT_MS) : 20_000);
-        const retryValue = this.options.retries ?? (env.JEV_COMPACT_RETRIES?.trim() ? Number(env.JEV_COMPACT_RETRIES) : 1);
+        const timeoutValue = this.options.timeoutMs ?? (env.JEVCOMP_TIMEOUT_MS?.trim() ? Number(env.JEVCOMP_TIMEOUT_MS) : 20_000);
+        const retryValue = this.options.retries ?? (env.JEVCOMP_RETRIES?.trim() ? Number(env.JEVCOMP_RETRIES) : 1);
         const timeout = Number.isFinite(timeoutValue) ? Math.max(1, Math.floor(timeoutValue)) : 20_000;
         const retries = Number.isFinite(retryValue) ? Math.max(0, Math.floor(retryValue)) : 1;
         const headers = { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' };
         if (provider === 'openrouter') {
-            headers['x-openrouter-title'] = 'jev-compact';
+            headers['x-openrouter-title'] = 'jevcomp';
             if (env.OPENROUTER_HTTP_REFERER)
                 headers['http-referer'] = env.OPENROUTER_HTTP_REFERER;
         }

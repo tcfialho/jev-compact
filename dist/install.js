@@ -1,7 +1,8 @@
 import { copyFile, cp, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-const TAG = '--jev-compact';
+import { LEGACY_HOOK_TAG } from './legacy.js';
+const TAGS = ['--jevcomp', LEGACY_HOOK_TAG];
 function errorCode(error) {
     return error && typeof error === 'object' && 'code' in error ? String(error.code ?? '') : undefined;
 }
@@ -26,11 +27,11 @@ async function loadHookConfig(path) {
         throw new Error(`Cannot update ${path}: existing hooks file must contain a JSON object`);
     return { config: parsed, existed: true };
 }
-function unixCommand(cliPath) { return `node ${JSON.stringify(cliPath)} hook --jev-compact`; }
-function windowsCommand(cliPath) { return `node "${cliPath.replace(/"/g, '""')}" hook --jev-compact`; }
+function unixCommand(cliPath) { return `node ${JSON.stringify(cliPath)} hook --jevcomp`; }
+function windowsCommand(cliPath) { return `node "${cliPath.replace(/"/g, '""')}" hook --jevcomp`; }
 function oursHook(hook) {
-    return ((typeof hook.command === 'string' && hook.command.includes(TAG)) ||
-        (typeof hook.commandWindows === 'string' && hook.commandWindows.includes(TAG)));
+    return (TAGS.some((tag) => typeof hook.command === 'string' && hook.command.includes(tag)) ||
+        TAGS.some((tag) => typeof hook.commandWindows === 'string' && hook.commandWindows.includes(tag)));
 }
 function ours(entry) { return entry.hooks.some(oursHook); }
 function withoutOurs(entry) {
@@ -39,7 +40,7 @@ function withoutOurs(entry) {
 }
 function codexHome(env) { return env.CODEX_HOME ?? join(homedir(), '.codex'); }
 export function runtimeDir(env = process.env) {
-    return env.JEV_COMPACT_RUNTIME_DIR ?? join(codexHome(env), 'jev-compact', 'runtime');
+    return env.JEVCOMP_RUNTIME_DIR ?? join(codexHome(env), 'jevcomp', 'runtime');
 }
 /** Copy the compiled runtime to a stable location so setup does not depend on the extracted checkout. */
 export async function installRuntime(cliPath, env = process.env) {
@@ -115,7 +116,7 @@ export async function installHooks(cliPath, env = process.env) {
     };
     add('PreCompact', { matcher: 'manual|auto', hooks: [commandHook(command, commandWindows, { timeout: 120, statusMessage: 'Selecting retained context with Jev' })] });
     add('PostCompact', { matcher: 'manual|auto', hooks: [commandHook(command, commandWindows, { timeout: 10 })] });
-    add('SessionStart', { matcher: 'startup|resume|clear|compact', hooks: [commandHook(command, commandWindows, { timeout: 10, additionalContextLimit: 0, statusMessage: 'Loading Jev Compact' })] });
+    add('SessionStart', { matcher: 'startup|resume|clear|compact', hooks: [commandHook(command, commandWindows, { timeout: 10, additionalContextLimit: 0, statusMessage: 'Loading jevcomp' })] });
     add('UserPromptSubmit', { hooks: [commandHook(command, commandWindows, { timeout: 10, additionalContextLimit: 0 })] });
     if (JSON.stringify(config) === before)
         return path;

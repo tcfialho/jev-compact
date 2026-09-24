@@ -284,14 +284,14 @@ async function askBatches(groups, state, asker, concurrency) {
 }
 function truncateResultOutput(text, head) {
     const prefix = head ? `${text.slice(0, head)}\n` : '';
-    return `${prefix}[jev-compact omitted ${Math.max(0, text.length - head)} chars; rerun tool if needed]`;
+    return `${prefix}[jevcomp omitted ${Math.max(0, text.length - head)} chars; rerun tool if needed]`;
 }
 function truncatedResultLength(originalChars, head) {
     if (originalChars <= head)
         return originalChars;
     const omitted = Math.max(0, originalChars - head);
     const prefixChars = head > 0 ? Math.min(head, originalChars) + 1 : 0;
-    return prefixChars + `[jev-compact omitted ${omitted} chars; rerun tool if needed]`.length;
+    return prefixChars + `[jevcomp omitted ${omitted} chars; rerun tool if needed]`.length;
 }
 function truncationSavings(originalChars, head) {
     return Math.max(0, originalChars - truncatedResultLength(originalChars, head));

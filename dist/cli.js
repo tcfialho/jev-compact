@@ -9,6 +9,7 @@ import { dashboardInstancePath, dashboardPort, restartDashboard, runningDashboar
 import { handleHook } from './hooks.js';
 import { resetUserSettings, setUserSetting, userSettings } from './settings.js';
 import { inspectHooks, installHooks, installRuntime, uninstallHooks } from './install.js';
+import { adoptLegacyEnvironment, migrateLegacyConfig } from './legacy.js';
 import { enabledPluginRoot } from './plugin-installation.js';
 import { hasSavedProviderKey, providerConfig, resolveApiKey, resolveProvider, saveProviderConfiguration } from './provider.js';
 import { renderMessages } from './render.js';
@@ -23,7 +24,7 @@ function help() {
     const pluginRoot = enabledPluginRoot();
     if (pluginRoot) {
         const command = `node "${join(pluginRoot, 'dist', 'cli.js')}"`;
-        console.log(`Jev Compact plugin
+        console.log(`jevcomp plugin
 
 First-time setup:
   ${command} setup openrouter    Save an OpenRouter API key
@@ -39,29 +40,29 @@ Dashboard: http://127.0.0.1:${dashboardPort(process.env)}/ (starts with each Cod
 Open /hooks in Codex to review the plugin hooks.`);
         return;
     }
-    console.log(`jev-compact
+    console.log(`jevcomp
 
 First-time setup:
-  jev-compact setup                  TypeSafe: save key + install Codex hooks
-  jev-compact setup openrouter       OpenRouter: save key + install Codex hooks
-  jev-compact configure PROVIDER     Change provider/key without reinstalling hooks
-  jev-compact install                Point Codex hooks at this checkout (development/local use)
-  jev-compact doctor                 Verify everything is ready
-  jev-compact config                 Show user-facing settings
-  jev-compact config NAME VALUE      Save a setting (works with desktop Codex too)
-  jev-compact config reset           Reset saved user settings to defaults
+  jevcomp setup                  TypeSafe: save key + install Codex hooks
+  jevcomp setup openrouter       OpenRouter: save key + install Codex hooks
+  jevcomp configure PROVIDER     Change provider/key without reinstalling hooks
+  jevcomp install                Point Codex hooks at this checkout (development/local use)
+  jevcomp doctor                 Verify everything is ready
+  jevcomp config                 Show user-facing settings
+  jevcomp config NAME VALUE      Save a setting (works with desktop Codex too)
+  jevcomp config reset           Reset saved user settings to defaults
 
 Useful commands:
-  jev-compact dashboard [--port N]   Restart the local dashboard
-  jev-compact stats [--json]         Measured local compaction statistics
-  jev-compact compact FILE [--context FILE] [--json FILE]
+  jevcomp dashboard [--port N]   Restart the local dashboard
+  jevcomp stats [--json]         Measured local compaction statistics
+  jevcomp compact FILE [--context FILE] [--json FILE]
                                      Preview Jev selection on a Codex rollout
-  jev-compact uninstall              Remove only jev-compact hooks
+  jevcomp uninstall              Remove only jevcomp hooks
 
 Dashboard: http://127.0.0.1:${dashboardPort(process.env)}/ (starts with each Codex session)
 Environment variables remain supported and override saved configuration.
-Tip: "jev-compact config mode observe" runs Jev and measures what would happen without changing Codex context.
-Run "jev-compact doctor --json" for machine-readable readiness details.`);
+Tip: "jevcomp config mode observe" runs Jev and measures what would happen without changing Codex context.
+Run "jevcomp doctor --json" for machine-readable readiness details.`);
 }
 async function secret(prompt) {
     if (!process.stdin.isTTY || !process.stdout.isTTY || typeof process.stdin.setRawMode !== 'function')
@@ -104,7 +105,7 @@ async function secret(prompt) {
     });
 }
 async function readiness() {
-    const provider = resolveProvider({ provider: process.env.JEV_COMPACT_PROVIDER, env: process.env });
+    const provider = resolveProvider({ provider: process.env.JEVCOMP_PROVIDER, env: process.env });
     const config = providerConfig({ provider, env: process.env });
     const hooks = await inspectHooks(process.env);
     const settings = userSettings(process.env);
@@ -140,18 +141,20 @@ async function configureProvider(provider) {
         await uninstallHooks();
     console.log(`Configured ${provider}.\nKey saved: ${saved.keyFile}\nProvider preference saved: ${saved.providerFile}`);
 }
-async function installAndExplain(cliPath = fileURLToPath(import.meta.url), commandPrefix = 'jev-compact') {
+async function installAndExplain(cliPath = fileURLToPath(import.meta.url), commandPrefix = 'jevcomp') {
     const path = await installHooks(cliPath);
     const ready = await readiness();
-    console.log(`jev-compact hooks installed: ${path}`);
+    console.log(`jevcomp hooks installed: ${path}`);
     console.log(`Provider: ${ready.provider} · API key: ${ready.apiKeyConfigured ? 'configured' : 'MISSING'}`);
     if (!ready.apiKeyConfigured)
         console.log(`Configure it with: ${commandPrefix} configure ${ready.provider}`);
-    console.log('Next: restart Codex, open /hooks once, and enable/trust the jev-compact hooks.');
+    console.log('Next: restart Codex, open /hooks once, and enable/trust the jevcomp hooks.');
     console.log(`Dashboard: http://127.0.0.1:${dashboardPort(process.env)}/ (starts with each Codex session)`);
     console.log(`Then run: ${commandPrefix} doctor`);
 }
 async function main() {
+    adoptLegacyEnvironment(process.env);
+    migrateLegacyConfig(process.env);
     const [cmd, ...args] = process.argv.slice(2);
     if (!cmd || cmd === 'help' || cmd === '--help' || cmd === '-h')
         return help();
@@ -163,7 +166,7 @@ async function main() {
     if (cmd === 'configure') {
         const provider = args[0];
         if (provider !== 'typesafe' && provider !== 'openrouter')
-            throw new Error('usage: jev-compact configure <typesafe|openrouter>');
+            throw new Error('usage: jevcomp configure <typesafe|openrouter>');
         await configureProvider(provider);
         return;
     }
@@ -174,12 +177,12 @@ async function main() {
         }
         if (args[0] === 'reset') {
             await resetUserSettings(process.env);
-            console.log('Saved jev-compact settings reset to defaults.');
+            console.log('Saved jevcomp settings reset to defaults.');
             printSettings(userSettings(process.env));
             return;
         }
         if (args.length < 2)
-            throw new Error('usage: jev-compact config <mode|restore-mode|restore-max-chars|pin-recent-messages|loss-threshold|min-reduction-ratio> <value>');
+            throw new Error('usage: jevcomp config <mode|restore-mode|restore-max-chars|pin-recent-messages|loss-threshold|min-reduction-ratio> <value>');
         const name = args[0];
         if (!['mode', 'restore-mode', 'restore-max-chars', 'pin-recent-messages', 'loss-threshold', 'min-reduction-ratio'].includes(name))
             throw new Error(`unknown setting: ${args[0]}`);
@@ -191,12 +194,12 @@ async function main() {
     if (cmd === 'setup') {
         const provider = (args[0] ?? resolveProvider({ env: process.env }));
         if (provider !== 'typesafe' && provider !== 'openrouter')
-            throw new Error('usage: jev-compact setup [typesafe|openrouter]');
+            throw new Error('usage: jevcomp setup [typesafe|openrouter]');
         if (!hasSavedProviderKey(provider, process.env))
             await configureProvider(provider);
         if (enabledPluginRoot()) {
             await uninstallHooks();
-            console.log('Open /hooks in Codex and confirm the four Jev Compact hooks are active.');
+            console.log('Open /hooks in Codex and confirm the four jevcomp hooks are active.');
             console.log(`Dashboard: http://127.0.0.1:${dashboardPort(process.env)}/ (starts with each Codex session)`);
             return;
         }
@@ -208,7 +211,7 @@ async function main() {
     if (cmd === 'install') {
         if (enabledPluginRoot()) {
             await uninstallHooks();
-            console.log('Jev Compact hooks are supplied by the plugin. Open /hooks in Codex to review them.');
+            console.log('jevcomp hooks are supplied by the plugin. Open /hooks in Codex to review them.');
             return;
         }
         await installAndExplain();
@@ -224,7 +227,7 @@ async function main() {
             console.log(JSON.stringify(value, null, 2));
             return;
         }
-        console.log(`jev-compact doctor\n`);
+        console.log(`jevcomp doctor\n`);
         console.log(`${value.apiKeyConfigured ? 'OK' : 'MISSING'}  API key (${value.provider})`);
         if (value.pluginRoot)
             console.log('CHECK  Plugin hooks: open /hooks and confirm four active');
@@ -245,13 +248,13 @@ async function main() {
                 console.log(`\nFix API key: node "${fileURLToPath(import.meta.url)}" configure ${value.provider}`);
         }
         else if (!value.apiKeyConfigured && !value.hooksInstalled) {
-            console.log(`\nFix both: jev-compact setup${value.provider === 'openrouter' ? ' openrouter' : ''}`);
+            console.log(`\nFix both: jevcomp setup${value.provider === 'openrouter' ? ' openrouter' : ''}`);
         }
         else {
             if (!value.apiKeyConfigured)
-                console.log(`\nFix API key: jev-compact configure ${value.provider}`);
+                console.log(`\nFix API key: jevcomp configure ${value.provider}`);
             if (!value.hooksInstalled)
-                console.log('\nFix hooks: jev-compact install');
+                console.log('\nFix hooks: jevcomp install');
         }
         return;
     }
@@ -296,8 +299,8 @@ async function main() {
         const requested = flag(args, '--port') ?? args.find((x) => /^\d+$/.test(x));
         const port = requested ? Number(requested) : dashboardPort(process.env);
         if (args.includes('--background')) {
-            const instanceId = process.env.JEV_COMPACT_DASHBOARD_INSTANCE_ID ?? randomUUID();
-            process.env.JEV_COMPACT_DASHBOARD_INSTANCE_ID = instanceId;
+            const instanceId = process.env.JEVCOMP_DASHBOARD_INSTANCE_ID ?? randomUUID();
+            process.env.JEVCOMP_DASHBOARD_INSTANCE_ID = instanceId;
             const { server, url } = await startDashboard(port);
             if (port !== 0) {
                 try {

@@ -70,7 +70,7 @@ test('provider can resolve API key from a configured key file', async () => {
 
 test('saved configuration selects provider and key without shell environment variables', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jev-config-'));
-  const env = { JEV_COMPACT_CONFIG_DIR: root };
+  const env = { JEVCOMP_CONFIG_DIR: root };
   await saveProviderConfiguration('openrouter', 'saved-openrouter-key', env);
   assert.equal(resolveProvider({ env }), 'openrouter');
   assert.equal(resolveApiKey('openrouter', { env }), 'saved-openrouter-key');
@@ -80,7 +80,7 @@ test('saved configuration selects provider and key without shell environment var
 
 test('honors disabled retries and retries OpenRouter timeouts', async () => {
   let calls = 0;
-  const failed = new JevClient({ provider: 'openrouter', apiKey: 'test', env: { JEV_COMPACT_RETRIES: '0' }, fetch: async () => {
+  const failed = new JevClient({ provider: 'openrouter', apiKey: 'test', env: { JEVCOMP_RETRIES: '0' }, fetch: async () => {
     calls++;
     return { ok: false, status: 524, headers: { get: () => null }, text: async () => 'timeout' };
   } });
@@ -118,7 +118,7 @@ test('rejects malformed answers, usage and mismatched answer types', async () =>
 
 test('a shell-only API key does not count as persistent setup', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jev-shell-key-'));
-  const env = { JEV_COMPACT_CONFIG_DIR: root, OPENROUTER_API_KEY: 'shell-key' };
+  const env = { JEVCOMP_CONFIG_DIR: root, OPENROUTER_API_KEY: 'shell-key' };
   assert.equal(resolveApiKey('openrouter', { env }), 'shell-key');
   assert.equal(hasSavedProviderKey('openrouter', env), false);
 });
@@ -161,7 +161,7 @@ test('generic key-file override follows the saved provider preference', async ()
   const root = await mkdtemp(join(tmpdir(), 'jev-generic-key-'));
   const keyFile = join(root, 'generic-key');
   await writeFile(keyFile, 'generic-openrouter-key\n');
-  const env = { JEV_COMPACT_CONFIG_DIR: root, JEV_COMPACT_KEY_FILE: keyFile };
+  const env = { JEVCOMP_CONFIG_DIR: root, JEVCOMP_KEY_FILE: keyFile };
   await saveProviderConfiguration('openrouter', 'old-key', env);
   assert.equal(resolveApiKey('openrouter', { env }), 'generic-openrouter-key');
   assert.notEqual(resolveApiKey('typesafe', { env }), 'generic-openrouter-key');

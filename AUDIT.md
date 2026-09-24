@@ -233,3 +233,13 @@ Real Codex CLI 0.156.1 sessions on Windows showed `Hook failed` for the plugin h
 - Separate symptom: `OS Error -1073283067` / `Acesso negado (os error 5)` are spawn errors of the shell itself, before any plugin code. The same Codex process also failed its own `exec_command` with `Failed to create unified exec process: Acesso negado`. Not reproduced afterwards.
 - Falsified: launching the Store `pwsh.exe` alias with `CREATE_SUSPENDED`, or from inside a job without breakaway, succeeds on this machine.
 - Codex hook trust is hash-based: any change to a hook command marks it `modified` until reviewed in `/hooks`.
+
+## 0.6.0 rename to jevcomp — 2026-09-24
+
+The npm name `jev-compact` belongs to another Jev compaction project, so the package, command, plugin, marketplace, skill, folders and `JEV_COMPACT_*` variables are now `jevcomp`/`JEVCOMP_*`.
+
+- Old variables are copied to the new names at CLI start; `~/.config/jev-compact` is copied once to `~/.config/jevcomp`.
+- Hooks tagged `--jev-compact` are still recognized, so setup and plugin migration replace them.
+- History from `~/.codex/jev-compact` and `plugins/data/jev-compact-jev-compact` is still read.
+- A dashboard started under the old name keeps port 43127 until replaced; the new launcher replaces it when the port is busy with one of ours.
+- `npm install -g github:...` on npm 11.16 installs a link to a deleted temporary clone; `--install-links` installs a real copy.
