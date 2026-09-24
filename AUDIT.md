@@ -182,7 +182,7 @@ Current Codex's token-budget implementation intentionally starts a new context w
 - Current Codex media/encrypted shapes that text-only Jev cannot inspect fail open.
 - User/developer/system text remains outside destructive Jev decisions.
 - Existing hooks are preserved by the direct installer; only entries tagged `--jev-compact` are replaced/removed.
-- Packaged `${PLUGIN_ROOT}`/`${PLUGIN_DATA}` behavior matches current Codex plugin placeholder expansion; Windows uses Codex's `commandWindows`/`cmd.exe` path.
+- Packaged hooks read `PLUGIN_ROOT` from Node's own environment; see the 0.5.3 Windows hook entry below.
 
 
 ## 0.5 post-compaction dedupe / observe pass — 2026-09-23
@@ -222,3 +222,14 @@ History/dashboard now distinguish:
 - whether membership was verified, stale, or unavailable.
 
 These remain character measurements of the normalized/plugin payloads, not claims about Codex billing-token savings.
+
+## 0.5.3 Windows hook launch fix — 2026-09-24
+
+Real Codex CLI 0.156.1 sessions on Windows showed `Hook failed` for the plugin hooks.
+
+- Evidence: an app-server session (`hook/completed`) reported `hook exited with code 1` for `UserPromptSubmit`; a Node preload trace showed the child received the literal path `<cwd>\%PLUGIN_ROOT%\dist\cli.js`.
+- Cause: Codex 0.156.1 runs plugin hooks through the session's user shell (`build_hooks_config` in `core/src/session/mod.rs` derives the shell; `hooks/src/engine/command_runner.rs` falls back to `COMSPEC /C` only without one). With PowerShell as the user shell, `%PLUGIN_ROOT%` is never expanded. `commandWindows` does not imply `cmd.exe`.
+- Fix: every hook uses one shell-neutral command, `node -e "import(...process.env.PLUGIN_ROOT...)" jev-compact hook --jev-compact`, with no shell variable syntax. `tests/hooks-manifest.test.mjs` runs it through cmd, Windows PowerShell, pwsh (or `sh`) from an unrelated working directory.
+- Separate symptom: `OS Error -1073283067` / `Acesso negado (os error 5)` are spawn errors of the shell itself, before any plugin code. The same Codex process also failed its own `exec_command` with `Failed to create unified exec process: Acesso negado`. Not reproduced afterwards.
+- Falsified: launching the Store `pwsh.exe` alias with `CREATE_SUSPENDED`, or from inside a job without breakaway, succeeds on this machine.
+- Codex hook trust is hash-based: any change to a hook command marks it `modified` until reviewed in `/hooks`.
