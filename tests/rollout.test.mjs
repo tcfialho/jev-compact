@@ -5,6 +5,21 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadCodexRollout, parseCodexRollout, UnsupportedCodexRolloutError } from '../dist/rollout.js';
 
+test('incomplete rollout rows fail open instead of dropping context', async () => {
+  const valid = JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ text: 'keep this' }] } });
+  const partial = `${valid}\n{"type":`;
+  assert.throws(() => parseCodexRollout(partial), UnsupportedCodexRolloutError);
+  const root = await mkdtemp(join(tmpdir(), 'jev-partial-rollout-'));
+  const path = join(root, 'rollout.jsonl');
+  await writeFile(path, partial);
+  await assert.rejects(loadCodexRollout(path), UnsupportedCodexRolloutError);
+});
+
+test('modern compaction without replacement history fails open', () => {
+  const row = { type: 'compacted', payload: { window_number: 2, replacement_history: [] } };
+  assert.throws(() => parseCodexRollout(JSON.stringify(row)), /missing history/);
+});
+
 test('replays compacted replacement_history as the live transcript', () => {
   const rows = [
     { type: 'response_item', payload: { type: 'message', role: 'user', content: [{ text: 'old prompt' }] } },

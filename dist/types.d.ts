@@ -27,6 +27,7 @@ export interface JevNoulQuestion {
 export type JevQuestions = Record<string, JevNoulQuestion>;
 export type JevState = Record<string, unknown>;
 export interface JevAnswer {
+    type?: string;
     noul?: number;
 }
 export interface JevUsage {

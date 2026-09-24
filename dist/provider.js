@@ -59,6 +59,9 @@ function readKey(paths) {
     }
     return '';
 }
+export function hasSavedProviderKey(provider, env = process.env) {
+    return savedProvider(env) === provider && !!readKey([defaultKeyPath(provider, env)]);
+}
 export function resolveApiKey(provider, options = {}) {
     if (options.apiKey)
         return options.apiKey;
@@ -114,12 +117,24 @@ function parseResponse(status, ok, text) {
     catch {
         throw new Error('Jev returned malformed JSON');
     }
-    if (!parsed || typeof parsed !== 'object' || !('answers' in parsed) || !parsed.answers)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+        throw new Error('Jev response is not an object');
+    const response = parsed;
+    if (!response.answers || typeof response.answers !== 'object' || Array.isArray(response.answers))
         throw new Error('Jev response is missing answers');
-    return parsed;
+    if (response.usage !== undefined) {
+        if (!response.usage || typeof response.usage !== 'object' || Array.isArray(response.usage))
+            throw new Error('Jev usage is invalid');
+        const usage = response.usage;
+        for (const field of ['input_tokens', 'output_tokens']) {
+            if (usage[field] !== undefined && (!Number.isInteger(usage[field]) || Number(usage[field]) < 0))
+                throw new Error(`Jev usage ${field} is invalid`);
+        }
+    }
+    return response;
 }
 function retryable(status) {
-    return status === 408 || status === 409 || status === 429 || status === 500 || status === 502 || status === 503 || status === 504 || status === 529;
+    return status === 408 || status === 409 || status === 429 || status === 500 || status === 502 || status === 503 || status === 504 || status === 524 || status === 529;
 }
 function headerDelay(response) {
     const milliseconds = response.headers?.get?.('retry-after-ms');
@@ -152,8 +167,10 @@ export class JevClient {
         const { provider, apiKey, model, baseUrl: url } = providerConfig(this.options);
         if (!apiKey)
             throw new Error(provider === 'openrouter' ? 'OPENROUTER_API_KEY is not configured' : 'TYPESAFE_API_KEY is not configured');
-        const timeout = Math.max(1, this.options.timeoutMs ?? (Number(env.JEV_COMPACT_TIMEOUT_MS) || 20_000));
-        const retries = Math.max(0, this.options.retries ?? (Number(env.JEV_COMPACT_RETRIES) || 1));
+        const timeoutValue = this.options.timeoutMs ?? (env.JEV_COMPACT_TIMEOUT_MS?.trim() ? Number(env.JEV_COMPACT_TIMEOUT_MS) : 20_000);
+        const retryValue = this.options.retries ?? (env.JEV_COMPACT_RETRIES?.trim() ? Number(env.JEV_COMPACT_RETRIES) : 1);
+        const timeout = Number.isFinite(timeoutValue) ? Math.max(1, Math.floor(timeoutValue)) : 20_000;
+        const retries = Number.isFinite(retryValue) ? Math.max(0, Math.floor(retryValue)) : 1;
         const headers = { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' };
         if (provider === 'openrouter') {
             headers['x-openrouter-title'] = 'jev-compact';
@@ -190,12 +207,15 @@ export class JevClient {
             const text = await response.text();
             if (response.ok || attempt >= retries || !retryable(response.status))
                 return parseResponse(response.status, response.ok, text);
-            await sleep(headerDelay(response) ?? Math.min(2_000, 200 * 2 ** attempt));
+            await sleep(Math.min(2_000, headerDelay(response) ?? 200 * 2 ** attempt));
         }
     }
 }
 export function noul(answers, key) {
-    const value = answers[key]?.noul;
+    const answer = answers[key];
+    if (answer?.type !== undefined && answer.type !== 'noul')
+        throw new Error(`Invalid Jev answer type for ${key}`);
+    const value = answer?.noul;
     if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1)
         throw new Error(`Invalid Jev answer for ${key}`);
     return value;

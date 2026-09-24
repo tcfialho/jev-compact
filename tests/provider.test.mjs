@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { JevClient, noul, resolveProvider, resolveApiKey, saveProviderConfiguration } from '../dist/provider.js';
+import { JevClient, hasSavedProviderKey, noul, resolveProvider, resolveApiKey, saveProviderConfiguration } from '../dist/provider.js';
 
 test('OpenRouter uses Decisions endpoint and latest Jev alias', async () => {
   let seen;
@@ -74,6 +74,53 @@ test('saved configuration selects provider and key without shell environment var
   await saveProviderConfiguration('openrouter', 'saved-openrouter-key', env);
   assert.equal(resolveProvider({ env }), 'openrouter');
   assert.equal(resolveApiKey('openrouter', { env }), 'saved-openrouter-key');
+  assert.equal(hasSavedProviderKey('openrouter', env), true);
+  assert.equal(hasSavedProviderKey('typesafe', env), false);
+});
+
+test('honors disabled retries and retries OpenRouter timeouts', async () => {
+  let calls = 0;
+  const failed = new JevClient({ provider: 'openrouter', apiKey: 'test', env: { JEV_COMPACT_RETRIES: '0' }, fetch: async () => {
+    calls++;
+    return { ok: false, status: 524, headers: { get: () => null }, text: async () => 'timeout' };
+  } });
+  await assert.rejects(failed.ask({}, { x: { type: 'noul', instructions: 'x' } }), /524/);
+  assert.equal(calls, 1);
+
+  const recovered = new JevClient({ provider: 'openrouter', apiKey: 'test', retries: 1, fetch: async () => {
+    calls++;
+    if (calls === 2) return { ok: false, status: 524, headers: { get: () => null }, text: async () => 'timeout' };
+    return { ok: true, status: 200, text: async () => JSON.stringify({ answers: { x: { type: 'noul', noul: 0.8 } } }) };
+  } });
+  assert.equal((await recovered.ask({}, { x: { type: 'noul', instructions: 'x' } })).answers.x.noul, 0.8);
+  assert.equal(calls, 3);
+});
+
+test('caps server retry delays so a hook does not wait for a long rate limit', async () => {
+  let calls = 0;
+  const client = new JevClient({ provider: 'typesafe', apiKey: 'test', retries: 1, fetch: async () => {
+    calls++;
+    if (calls === 1) return { ok: false, status: 429, headers: { get: (name) => name === 'retry-after-ms' ? '3600000' : null }, text: async () => 'busy' };
+    return { ok: true, status: 200, text: async () => JSON.stringify({ answers: { x: { type: 'noul', noul: 0.9 } } }) };
+  } });
+  const started = Date.now();
+  await client.ask({}, { x: { type: 'noul', instructions: 'x' } });
+  assert.ok(Date.now() - started < 3000);
+});
+
+test('rejects malformed answers, usage and mismatched answer types', async () => {
+  const reply = (body) => new JevClient({ provider: 'typesafe', apiKey: 'test', retries: 0, fetch: async () => ({ ok: true, status: 200, text: async () => JSON.stringify(body) }) });
+  const question = { x: { type: 'noul', instructions: 'x' } };
+  await assert.rejects(reply({ answers: [] }).ask({}, question), /missing answers/);
+  await assert.rejects(reply({ answers: {}, usage: { input_tokens: -1 } }).ask({}, question), /usage input_tokens/);
+  assert.throws(() => noul({ x: { type: 'choice', noul: 0.7 } }, 'x'), /Invalid Jev answer type/);
+});
+
+test('a shell-only API key does not count as persistent setup', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jev-shell-key-'));
+  const env = { JEV_COMPACT_CONFIG_DIR: root, OPENROUTER_API_KEY: 'shell-key' };
+  assert.equal(resolveApiKey('openrouter', { env }), 'shell-key');
+  assert.equal(hasSavedProviderKey('openrouter', env), false);
 });
 
 

@@ -1,17 +1,16 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { compactMessages, reductionRatio } from './compact.js';
 import { startDashboard, stats } from './dashboard.js';
 import { handleHook } from './hooks.js';
 import { resetUserSettings, setUserSetting, userSettings } from './settings.js';
 import { inspectHooks, installHooks, installRuntime, uninstallHooks } from './install.js';
-import { providerConfig, resolveApiKey, resolveProvider, saveProviderConfiguration } from './provider.js';
+import { enabledPluginRoot } from './plugin-installation.js';
+import { hasSavedProviderKey, providerConfig, resolveApiKey, resolveProvider, saveProviderConfiguration } from './provider.js';
 import { renderMessages } from './render.js';
 import { loadCodexRollout } from './rollout.js';
 import { dataDir } from './store.js';
@@ -116,8 +115,9 @@ async function launchDashboard(port) {
     });
 }
 function help() {
-    if (installedPluginRoot()) {
-        const command = `node "${fileURLToPath(import.meta.url)}"`;
+    const pluginRoot = enabledPluginRoot();
+    if (pluginRoot) {
+        const command = `node "${join(pluginRoot, 'dist', 'cli.js')}"`;
         console.log(`Jev Compact plugin
 
 First-time setup:
@@ -196,15 +196,6 @@ async function secret(prompt) {
         process.stdin.on('data', onData);
     });
 }
-function installedPluginRoot() {
-    const cliPath = fileURLToPath(import.meta.url);
-    const cacheRoot = resolve(process.env.CODEX_HOME ?? join(homedir(), '.codex'), 'plugins', 'cache');
-    const relativeCliPath = relative(cacheRoot, cliPath);
-    if (relativeCliPath === '..' || relativeCliPath.startsWith(`..${sep}`) || isAbsolute(relativeCliPath))
-        return undefined;
-    const pluginRoot = dirname(dirname(cliPath));
-    return existsSync(join(pluginRoot, 'hooks', 'hooks.json')) ? pluginRoot : undefined;
-}
 async function readiness() {
     const provider = resolveProvider({ provider: process.env.JEV_COMPACT_PROVIDER, env: process.env });
     const config = providerConfig({ provider, env: process.env });
@@ -219,7 +210,7 @@ async function readiness() {
         hooksInstalled: hooks.installed,
         hookEvents: hooks.events,
         hooksFile: hooks.path,
-        pluginRoot: installedPluginRoot(),
+        pluginRoot: enabledPluginRoot(),
         dataDir: dataDir(process.env),
         settings,
     };
@@ -237,7 +228,7 @@ function printSettings(settings) {
 async function configureProvider(provider) {
     const key = await secret(`${provider === 'typesafe' ? 'TypeSafe' : 'OpenRouter'} API key: `);
     const saved = await saveProviderConfiguration(provider, key, process.env);
-    if (installedPluginRoot())
+    if (enabledPluginRoot())
         await uninstallHooks();
     console.log(`Configured ${provider}.\nKey saved: ${saved.keyFile}\nProvider preference saved: ${saved.providerFile}`);
 }
@@ -289,11 +280,13 @@ async function main() {
         return;
     }
     if (cmd === 'setup') {
-        const provider = (args[0] ?? 'typesafe');
+        const provider = (args[0] ?? resolveProvider({ env: process.env }));
         if (provider !== 'typesafe' && provider !== 'openrouter')
             throw new Error('usage: jev-compact setup [typesafe|openrouter]');
-        await configureProvider(provider);
-        if (installedPluginRoot()) {
+        if (!hasSavedProviderKey(provider, process.env))
+            await configureProvider(provider);
+        if (enabledPluginRoot()) {
+            await uninstallHooks();
             console.log('Open /hooks in Codex and confirm the four Jev Compact hooks are active.');
             return;
         }
@@ -303,7 +296,7 @@ async function main() {
         return;
     }
     if (cmd === 'install') {
-        if (installedPluginRoot()) {
+        if (enabledPluginRoot()) {
             await uninstallHooks();
             console.log('Jev Compact hooks are supplied by the plugin. Open /hooks in Codex to review them.');
             return;

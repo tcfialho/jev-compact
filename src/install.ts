@@ -26,15 +26,24 @@ async function loadHookConfig(path: string): Promise<{ config: HookConfig; exist
 
 function unixCommand(cliPath: string): string { return `node ${JSON.stringify(cliPath)} hook --jev-compact`; }
 function windowsCommand(cliPath: string): string { return `node "${cliPath.replace(/"/g, '""')}" hook --jev-compact`; }
-function ours(entry: HookEntry): boolean {
-  return entry.hooks.some((hook) =>
+function oursHook(hook: Record<string, unknown>): boolean {
+  return (
     (typeof hook.command === 'string' && hook.command.includes(TAG)) ||
     (typeof hook.commandWindows === 'string' && hook.commandWindows.includes(TAG)));
 }
 
+function ours(entry: HookEntry): boolean { return entry.hooks.some(oursHook); }
+
+function withoutOurs(entry: HookEntry): HookEntry | undefined {
+  const hooks = entry.hooks.filter((hook) => !oursHook(hook));
+  return hooks.length ? { ...entry, hooks } : undefined;
+}
+
+function codexHome(env: Record<string, string | undefined>): string { return env.CODEX_HOME ?? join(homedir(), '.codex'); }
+
 
 export function runtimeDir(env = process.env): string {
-  return env.JEV_COMPACT_RUNTIME_DIR ?? join(homedir(), '.codex', 'jev-compact', 'runtime');
+  return env.JEV_COMPACT_RUNTIME_DIR ?? join(codexHome(env), 'jev-compact', 'runtime');
 }
 
 /** Copy the compiled runtime to a stable location so setup does not depend on the extracted checkout. */
@@ -62,7 +71,7 @@ export async function installRuntime(cliPath: string, env = process.env): Promis
   return join(target, 'cli.js');
 }
 export async function inspectHooks(env = process.env): Promise<{ path: string; installed: boolean; events: string[] }> {
-  const path = env.CODEX_HOOKS_FILE ?? join(homedir(), '.codex', 'hooks.json');
+  const path = env.CODEX_HOOKS_FILE ?? join(codexHome(env), 'hooks.json');
   let config: HookConfig;
   try { ({ config } = await loadHookConfig(path)); } catch { return { path, installed: false, events: [] }; }
   const events = Object.entries(config.hooks ?? {})
@@ -78,7 +87,7 @@ function commandHook(command: string, commandWindows: string, extra: Record<stri
 }
 
 export async function installHooks(cliPath: string, env = process.env): Promise<string> {
-  const path = env.CODEX_HOOKS_FILE ?? join(homedir(), '.codex', 'hooks.json');
+  const path = env.CODEX_HOOKS_FILE ?? join(codexHome(env), 'hooks.json');
   const { config, existed } = await loadHookConfig(path);
   const before = JSON.stringify(config);
   config.hooks ??= {};
@@ -87,7 +96,7 @@ export async function installHooks(cliPath: string, env = process.env): Promise<
   const commandWindows = windowsCommand(resolved);
   const add = (name: string, entry: HookEntry) => {
     const list = config.hooks![name] ?? [];
-    config.hooks![name] = [...list.filter((candidate) => !ours(candidate)), entry];
+    config.hooks![name] = [...list.map(withoutOurs).filter((candidate): candidate is HookEntry => candidate !== undefined), entry];
   };
   add('PreCompact', { matcher: 'manual|auto', hooks: [commandHook(command, commandWindows, { timeout: 120, statusMessage: 'Selecting retained context with Jev' })] });
   add('PostCompact', { matcher: 'manual|auto', hooks: [commandHook(command, commandWindows, { timeout: 10 })] });
@@ -101,13 +110,13 @@ export async function installHooks(cliPath: string, env = process.env): Promise<
 }
 
 export async function uninstallHooks(env = process.env): Promise<string> {
-  const path = env.CODEX_HOOKS_FILE ?? join(homedir(), '.codex', 'hooks.json');
+  const path = env.CODEX_HOOKS_FILE ?? join(codexHome(env), 'hooks.json');
   let loaded: { config: HookConfig; existed: boolean };
   try { loaded = await loadHookConfig(path); } catch (error) { throw error; }
   if (!loaded.existed) return path;
   const { config } = loaded;
   const before = JSON.stringify(config);
-  if (config.hooks) for (const key of Object.keys(config.hooks)) config.hooks[key] = (config.hooks[key] ?? []).filter((entry) => !ours(entry));
+  if (config.hooks) for (const key of Object.keys(config.hooks)) config.hooks[key] = (config.hooks[key] ?? []).map(withoutOurs).filter((entry): entry is HookEntry => entry !== undefined);
   if (JSON.stringify(config) === before) return path;
   await copyFile(path, `${path}.bak.${Date.now()}`);
   await writeFile(path, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });

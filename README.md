@@ -16,6 +16,8 @@ User, developer and system text is never selected for deletion by Jev. Exact cop
 
 Requires **Node.js 20+** and either a TypeSafe API key or an OpenRouter API key. No `npm install` is required for a downloaded release because `dist/` is included.
 
+The unscoped npm name `jev-compact` currently belongs to a different project. Install this project from its Codex plugin marketplace or a release of this repository until its own npm package is published.
+
 If you installed Jev Compact as a Codex plugin, open the plugin and choose **Configure Jev Compact with OpenRouter** or **Configure Jev Compact with TypeSafe**. Codex checks for an existing key first. If one is needed, enter it in the terminal prompt shown by the installed plugin's CLI; the key is not sent through chat. Open `/hooks` and confirm the four Jev Compact hooks are active. Plugin setup uses the bundled hooks.
 
 For a downloaded release, use the commands below from the extracted folder.
@@ -58,7 +60,7 @@ OK  Node v20+
 
 If the package is installed on your PATH, use `jev-compact ...` instead of `node dist/cli.js ...`. If you are using only an extracted release, use the stable `node ~/.codex/jev-compact/runtime/dist/cli.js ...` command printed by `setup` after you move/delete the release folder.
 
-Plugin setup manages its bundled hooks and removes older Jev Compact user hooks when configuring a key.
+Plugin setup uses bundled hooks and migrates older Jev Compact user hooks automatically.
 
 ## What Jev is doing
 
@@ -66,6 +68,8 @@ Jev is used as a fast **judge**, not as the coding model. For each completed too
 
 1. Would removing this call and result lose information still needed for the task?
 2. Would shortening only the result lose information still needed?
+
+Jev receives a bounded text view of the conversation and tool evidence. Common credential patterns are redacted from that provider-bound view, but the redaction cannot recognize every possible secret.
 
 That produces three practical outcomes:
 
@@ -318,7 +322,8 @@ Data directory precedence:
 ```text
 PLUGIN_DATA
 → JEV_COMPACT_DATA_DIR
-→ ~/.codex/jev-compact
+→ active Codex plugin data directory (including when CLI is run from a release or npm package)
+→ CODEX_HOME/jev-compact (or ~/.codex/jev-compact)
 ```
 
 Each active session can have:
@@ -328,7 +333,7 @@ Each active session can have:
 - structured retained `.messages.json`;
 - local `history.jsonl` observability data.
 
-Old per-session sidecars are cleaned up automatically. History is retained for dashboard/statistics use. `setup` keeps its stable compiled runtime under `~/.codex/jev-compact/runtime` unless `JEV_COMPACT_RUNTIME_DIR` overrides it.
+Old per-session sidecars are cleaned up automatically. History is retained for dashboard/statistics use. `setup` keeps its stable compiled runtime under `~/.codex/jev-compact/runtime` (or under `CODEX_HOME` when set) unless `JEV_COMPACT_RUNTIME_DIR` overrides it.
 
 ## Development
 

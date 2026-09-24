@@ -1,12 +1,22 @@
 import { appendFile, chmod, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { enabledPluginDataDir } from './plugin-installation.js';
 function safe(value) { return value.replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 180); }
-export function dataDir(env = process.env) { return env.PLUGIN_DATA ?? env.JEV_COMPACT_DATA_DIR ?? join(homedir(), '.codex', 'jev-compact'); }
+export function dataDir(env = process.env) {
+    return env.PLUGIN_DATA ?? env.JEV_COMPACT_DATA_DIR ?? enabledPluginDataDir(env) ?? join(env.CODEX_HOME ?? join(homedir(), '.codex'), 'jev-compact');
+}
 export function statePath(sessionId, env = process.env) { return join(dataDir(env), 'sessions', `${safe(sessionId)}.json`); }
 export function contextPath(sessionId, env = process.env) { return join(dataDir(env), 'sessions', `${safe(sessionId)}.context.txt`); }
 export function messagesPath(sessionId, env = process.env) { return join(dataDir(env), 'sessions', `${safe(sessionId)}.messages.json`); }
 export function historyPath(env = process.env) { return join(dataDir(env), 'history.jsonl'); }
+export function readableHistoryPaths(env = process.env) {
+    const current = historyPath(env);
+    if (env.PLUGIN_DATA || env.JEV_COMPACT_DATA_DIR || !enabledPluginDataDir(env))
+        return [current];
+    const legacy = join(env.CODEX_HOME ?? join(homedir(), '.codex'), 'jev-compact', 'history.jsonl');
+    return legacy === current ? [current] : [legacy, current];
+}
 async function ensurePrivateDir(path) {
     await mkdir(path, { recursive: true, mode: 0o700 });
     try {
@@ -204,17 +214,30 @@ export async function tryAppendHistory(row, env = process.env) {
     }
 }
 export async function readHistory(env = process.env) {
-    try {
-        return (await readFile(historyPath(env), 'utf8')).split(/\r?\n/).filter(Boolean).flatMap((line) => {
+    const rows = new Map();
+    for (const path of readableHistoryPaths(env)) {
+        let lines;
+        try {
+            lines = (await readFile(path, 'utf8')).split(/\r?\n/);
+        }
+        catch {
+            continue;
+        }
+        for (const line of lines) {
+            if (!line)
+                continue;
+            let row;
             try {
-                return [JSON.parse(line)];
+                row = JSON.parse(line);
             }
             catch {
-                return [];
+                continue;
             }
-        });
+            if (!row || typeof row !== 'object' || typeof row.at !== 'string' || typeof row.sessionId !== 'string' || typeof row.status !== 'string')
+                continue;
+            const key = row.runId ? `${row.sessionId}\u0000${row.runId}\u0000${row.phase ?? ''}\u0000${row.status}` : line;
+            rows.set(key, row);
+        }
     }
-    catch {
-        return [];
-    }
+    return [...rows.values()].sort((left, right) => left.at.localeCompare(right.at));
 }

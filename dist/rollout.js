@@ -136,7 +136,7 @@ function replacementHistory(row) {
     if (row.type !== 'compacted')
         return undefined;
     const replacement = payload(row)?.replacement_history;
-    return Array.isArray(replacement) ? replacement : undefined;
+    return Array.isArray(replacement) && replacement.length ? replacement : undefined;
 }
 function hasModernWindow(row) {
     const body = payload(row);
@@ -172,6 +172,9 @@ function applyRolloutRow(messages, row) {
                 appendResponseItem(messages, item);
         }
         else {
+            if (hasModernWindow(row) || typeof payload(row)?.message !== 'string') {
+                throw new UnsupportedCodexRolloutError('compaction checkpoint is missing history');
+            }
             applyLegacyCompaction(messages, row);
         }
         return;
@@ -212,10 +215,11 @@ export function parseCodexRollout(jsonl) {
             row = JSON.parse(line);
         }
         catch {
-            continue;
+            throw new UnsupportedCodexRolloutError('malformed Codex rollout JSONL');
         }
-        if (record(row))
-            applyRolloutRow(messages, row);
+        if (!record(row))
+            throw new UnsupportedCodexRolloutError('invalid Codex rollout JSONL row');
+        applyRolloutRow(messages, row);
     }
     return messages;
 }
@@ -223,13 +227,16 @@ function parseRow(bytes) {
     const line = bytes.toString('utf8').trim();
     if (!line)
         return undefined;
+    let row;
     try {
-        const row = JSON.parse(line);
-        return record(row) ? row : undefined;
+        row = JSON.parse(line);
     }
     catch {
-        return undefined;
+        throw new UnsupportedCodexRolloutError('malformed Codex rollout JSONL');
     }
+    if (!record(row))
+        throw new UnsupportedCodexRolloutError('invalid Codex rollout JSONL row');
+    return row;
 }
 function inspectRow(bytes, offset, unsafeNewerHistory) {
     const row = parseRow(bytes);
@@ -293,6 +300,8 @@ async function parseForwardRange(file, start, end, chunkBytes) {
         }
         position += chunk.length;
     }
+    if (position < end)
+        throw new UnsupportedCodexRolloutError('Codex rollout changed while reading');
     if (pending.length)
         consume(pending.length === 1 ? pending[0] : Buffer.concat(pending, pendingBytes));
     return messages;

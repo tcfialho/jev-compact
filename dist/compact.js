@@ -57,11 +57,15 @@ catch {
     return '[unserializable]';
 } }
 function trunc(text, n) { return text.length <= n ? text : `${text.slice(0, Math.max(0, n - 1))}…`; }
-function inputPreviewFromText(value) {
-    let text = value.replace(/\s+/g, ' ');
+function redactSecrets(value) {
+    let text = value.replace(/(authorization\s*[:=]\s*bearer\s+)["']?[^\s"',;}\\]+/gi, '$1[redacted]');
     text = text.replace(/("(?:api[_-]?key|access[_-]?token|token|password|secret|authorization)"\s*:\s*)"[^"]*"/gi, '$1"[redacted]"');
+    text = text.replace(/((?:api[_-]?key|access[_-]?token|token|password|secret)\s*[=:]\s*)(["'])(.*?)\2/gi, '$1$2[redacted]$2');
     text = text.replace(/((?:api[_-]?key|access[_-]?token|token|password|secret|authorization)\s*[=:]\s*)[^\s,}]+/gi, '$1[redacted]');
-    return trunc(text, 180);
+    return text.replace(/\bsk-[A-Za-z0-9_-]{12,}\b/g, '[redacted]');
+}
+function inputPreviewFromText(value) {
+    return trunc(redactSecrets(value).replace(/\s+/g, ' '), 180);
 }
 function pinned(i, total, recent) { return i === 0 || i >= total - recent; }
 function resultPreview(text) {
@@ -85,7 +89,7 @@ function collect(messages, recent) {
     return out;
 }
 function goal(messages) {
-    return messages.filter((m) => m.role === 'user' && m.text.trim()).slice(-3).map((m) => trunc(m.text, 500)).join('\n');
+    return messages.filter((m) => m.role === 'user' && m.text.trim()).slice(-3).map((m) => trunc(redactSecrets(m.text), 500)).join('\n');
 }
 function fitState(messages, calls, o) {
     const byMessage = new Map();
@@ -95,13 +99,13 @@ function fitState(messages, calls, o) {
         const cs = (byMessage.get(i) ?? []).map((c) => ({
             id: c.id,
             tool: c.name,
-            input: trunc(c.inputText, limit),
+            input: trunc(redactSecrets(c.inputText), limit),
             result: `${c.isError ? 'error' : 'ok'}, ${c.resultChars} chars total`,
-            result_preview_for_judgment: trunc(c.resultPreview, limit >= 1000 ? 420 : limit >= 200 ? 180 : 80),
+            result_preview_for_judgment: trunc(redactSecrets(c.resultPreview), limit >= 1000 ? 420 : limit >= 200 ? 180 : 80),
         }));
-        return (!m.text.trim() && !cs.length) ? [] : [{ i, role: m.role, text: m.text, ...(cs.length ? { tool_calls: cs } : {}) }];
+        return (!m.text.trim() && !cs.length) ? [] : [{ i, role: m.role, text: redactSecrets(m.text), ...(cs.length ? { tool_calls: cs } : {}) }];
     });
-    const goalText = o.goal || goal(messages);
+    const goalText = redactSecrets(o.goal || goal(messages));
     const stateOf = (history) => ({ context: STATE_CONTEXT, goal: goalText, history });
     const entryTokens = (entry) => estimateTokens(JSON.stringify(entry)) + 1;
     const baseTokens = estimateTokens(JSON.stringify(stateOf([])));
@@ -157,7 +161,7 @@ function fitState(messages, calls, o) {
         const own = byMessage.get(e.i);
         if (pinned(e.i, messages.length, o.preserveRecentMessages) || !own)
             continue;
-        shrink(i, (x) => { x.tool_calls = own.map((c) => `${c.id} ${c.name} ${trunc(c.inputText.replace(/\s+/g, ' '), 60)} -> ${c.isError ? 'error' : 'ok'} ${c.resultChars}ch`); });
+        shrink(i, (x) => { x.tool_calls = own.map((c) => `${c.id} ${c.name} ${trunc(redactSecrets(c.inputText).replace(/\s+/g, ' '), 60)} -> ${c.isError ? 'error' : 'ok'} ${c.resultChars}ch`); });
         if (fits())
             return fitted(history, tokens, 'old calls compacted');
     }
@@ -261,8 +265,8 @@ async function askBatches(groups, state, asker, concurrency) {
         while (next < groups.length) {
             const group = groups[next++];
             const res = await asker.ask(state, group.questions);
-            const hasInputUsage = Number.isFinite(res.usage?.input_tokens);
-            const hasOutputUsage = Number.isFinite(res.usage?.output_tokens);
+            const hasInputUsage = Number.isInteger(res.usage?.input_tokens) && res.usage.input_tokens >= 0;
+            const hasOutputUsage = Number.isInteger(res.usage?.output_tokens) && res.usage.output_tokens >= 0;
             if (hasInputUsage || hasOutputUsage)
                 usageReportedRequests++;
             inputTokens += hasInputUsage ? res.usage.input_tokens : 0;

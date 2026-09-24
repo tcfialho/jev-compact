@@ -1,7 +1,11 @@
-import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { compactMessages, reductionRatio } from './compact.js';
+import { inspectHooks, uninstallHooks } from './install.js';
 import { dedupeRetainedMessages, type DedupeSummary } from './membership.js';
-import { providerConfig, resolveProvider, type JevProvider } from './provider.js';
+import { providerConfig, resolveApiKey, resolveProvider, type JevProvider } from './provider.js';
 import { userSettings } from './settings.js';
 import { loadCodexRolloutSnapshot } from './rollout.js';
 import { capContext, renderIndex, renderMessages, renderMessagesForInjection } from './render.js';
@@ -49,6 +53,30 @@ function parseInput(value: unknown): HookInput {
     trigger: typeof v.trigger === 'string' ? v.trigger : undefined,
     model: typeof v.model === 'string' ? v.model : undefined,
   };
+}
+
+async function migrateLegacyHooks(input: HookInput, env: Record<string, string | undefined>): Promise<false | true | string> {
+  if (!env.PLUGIN_ROOT) return false;
+  const codexHome = env.CODEX_HOME ?? join(homedir(), '.codex');
+  const sessionHash = createHash('sha256').update(input.session_id).digest('hex');
+  const marker = join(codexHome, 'jev-compact', 'migrations', `${sessionHash}.skip`);
+  if (input.hook_event_name === 'SessionStart' && input.source && input.source !== 'compact') {
+    try { await rm(marker, { force: true }); }
+    catch (error) { return `Jev Compact could not resume plugin hooks: ${String(error)}`; }
+  }
+  try { await readFile(marker); return true; }
+  catch (error) {
+    if (!error || typeof error !== 'object' || !('code' in error) || error.code !== 'ENOENT') {
+      return `Jev Compact could not inspect migration state: ${String(error)}`;
+    }
+  }
+  if (!(await inspectHooks(env)).events.length) return false;
+  try {
+    await mkdir(dirname(marker), { recursive: true, mode: 0o700 });
+    await writeFile(marker, '', { flag: 'wx', mode: 0o600 });
+    await uninstallHooks(env);
+  } catch (error) { return `Jev Compact could not migrate older hooks: ${String(error)}`; }
+  return true;
 }
 
 function requestedProvider(env: Record<string, string | undefined>): JevProvider | undefined {
@@ -264,6 +292,15 @@ async function restore(input: HookInput, event: 'SessionStart' | 'UserPromptSubm
 
 export async function handleHook(value: unknown, env: Record<string, string | undefined> = process.env): Promise<Record<string, unknown>> {
   const input = parseInput(value);
+  const migration = await migrateLegacyHooks(input, env);
+  if (typeof migration === 'string') return { continue: true, systemMessage: migration };
+  if (migration) return { continue: true, suppressOutput: true };
+  if (input.hook_event_name === 'SessionStart' && input.source !== 'compact' && env.PLUGIN_ROOT) {
+    const provider = resolveProvider({ provider: requestedProvider(env), env });
+    if (!resolveApiKey(provider, { env })) {
+      return { continue: true, systemMessage: 'Jev Compact needs an API key. Open the plugin and choose Configure with OpenRouter or TypeSafe.' };
+    }
+  }
   if (input.hook_event_name === 'PreCompact') {
     const createdAt = new Date().toISOString();
     const runId = `${input.session_id}:${input.turn_id ?? 'compact'}:${createdAt}`;

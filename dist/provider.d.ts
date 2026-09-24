@@ -20,6 +20,7 @@ export declare function saveProviderConfiguration(provider: Exclude<JevProvider,
     keyFile: string;
     providerFile: string;
 }>;
+export declare function hasSavedProviderKey(provider: Exclude<JevProvider, 'auto'>, env?: Env): boolean;
 export declare function resolveApiKey(provider: Exclude<JevProvider, 'auto'>, options?: Pick<JevClientOptions, 'apiKey' | 'env'>): string;
 export declare function resolveProvider(options?: Pick<JevClientOptions, 'provider' | 'env' | 'apiKey'>): Exclude<JevProvider, 'auto'>;
 export declare function providerConfig(options?: JevClientOptions): {

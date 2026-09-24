@@ -29,7 +29,7 @@ export interface JevNoulQuestion {
 
 export type JevQuestions = Record<string, JevNoulQuestion>;
 export type JevState = Record<string, unknown>;
-export interface JevAnswer { noul?: number }
+export interface JevAnswer { type?: string; noul?: number }
 export interface JevUsage { input_tokens?: number; output_tokens?: number }
 export interface JevResponse { answers: Record<string, JevAnswer>; model?: string; usage?: JevUsage }
 export interface JevAsker { ask(state: JevState, questions: JevQuestions): Promise<JevResponse> }

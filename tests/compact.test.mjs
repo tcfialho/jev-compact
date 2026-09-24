@@ -46,6 +46,25 @@ test('untouched messages retain object identity and protected roles remain in Je
   assert.match(JSON.stringify(seenState), /Never edit generated files/);
 });
 
+test('provider state and decision previews redact credentials without changing retained evidence', async () => {
+  const bearer = 'sample-bearer-secret-123456';
+  const messages = [
+    { role: 'user', text: `Check Authorization: Bearer ${bearer}`, toolCalls: [] },
+    { role: 'assistant', text: '', toolCalls: [{ id: 'credential-call', name: 'shell', input: { cmd: `API_KEY='${bearer}'` } }] },
+    { role: 'user', text: '', toolCalls: [], toolResults: [{ callId: 'credential-call', output: `Authorization: Bearer ${bearer}` }] },
+  ];
+  let judgedState = '';
+  const asker = { async ask(state, questions) {
+    judgedState = JSON.stringify(state);
+    return { answers: Object.fromEntries(Object.keys(questions).map((key) => [key, { type: 'noul', noul: 0.9 }])) };
+  } };
+  const result = await compact(messages, asker, { preserveRecentMessages: 0 });
+  assert.doesNotMatch(judgedState, /sample-bearer-secret-123456/);
+  assert.doesNotMatch(result.decisions[0].inputPreview, /sample-bearer-secret-123456/);
+  assert.match(result.messages[0].text, /sample-bearer-secret-123456/);
+  assert.match(result.messages[2].toolResults[0].output, /sample-bearer-secret-123456/);
+});
+
 test('conservative ordering keeps full result when truncate-loss is high even if drop-loss is low', async () => {
   const messages = [
     { role: 'user', text: 'task', toolCalls: [] },

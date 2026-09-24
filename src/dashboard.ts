@@ -1,6 +1,6 @@
 import { stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
-import { historyPath, readHistory, type HistoryRow } from './store.js';
+import { readableHistoryPaths, readHistory, type HistoryRow } from './store.js';
 import { settingsPath, userSettings } from './settings.js';
 
 interface ToolSummary {
@@ -390,7 +390,8 @@ export async function startDashboard(port = 43127, env = process.env): Promise<{
       try { const info = await stat(path); return `${info.size}:${info.mtimeMs}`; } catch { return 'missing'; }
     };
     // Dashboard content depends on both history and the persisted user-facing settings.
-    const identity = `${await identityPart(historyPath(env))}|${await identityPart(settingsPath(env))}`;
+    const historyIdentity = await Promise.all(readableHistoryPaths(env).map(identityPart));
+    const identity = `${historyIdentity.join('|')}|${await identityPart(settingsPath(env))}`;
     if (cachedStats && identity === cachedIdentity) return cachedStats;
     cachedStats = await stats(env);
     cachedIdentity = identity;

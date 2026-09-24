@@ -121,7 +121,7 @@ function isRollback(row: Record<string, unknown>): boolean {
 function replacementHistory(row: Record<string, unknown>): unknown[] | undefined {
   if (row.type !== 'compacted') return undefined;
   const replacement = payload(row)?.replacement_history;
-  return Array.isArray(replacement) ? replacement : undefined;
+  return Array.isArray(replacement) && replacement.length ? replacement : undefined;
 }
 
 function hasModernWindow(row: Record<string, unknown>): boolean {
@@ -167,6 +167,9 @@ function applyRolloutRow(messages: Message[], row: Record<string, unknown>): voi
       messages.length = 0;
       for (const item of replacement) appendResponseItem(messages, item);
     } else {
+      if (hasModernWindow(row) || typeof payload(row)?.message !== 'string') {
+        throw new UnsupportedCodexRolloutError('compaction checkpoint is missing history');
+      }
       applyLegacyCompaction(messages, row);
     }
     return;
@@ -199,8 +202,10 @@ export function parseCodexRollout(jsonl: string): Message[] {
   for (const line of jsonl.split(/\r?\n/)) {
     if (!line.trim()) continue;
     let row: unknown;
-    try { row = JSON.parse(line); } catch { continue; }
-    if (record(row)) applyRolloutRow(messages, row);
+    try { row = JSON.parse(line); }
+    catch { throw new UnsupportedCodexRolloutError('malformed Codex rollout JSONL'); }
+    if (!record(row)) throw new UnsupportedCodexRolloutError('invalid Codex rollout JSONL row');
+    applyRolloutRow(messages, row);
   }
   return messages;
 }
@@ -208,12 +213,11 @@ export function parseCodexRollout(jsonl: string): Message[] {
 function parseRow(bytes: any): Record<string, unknown> | undefined {
   const line = bytes.toString('utf8').trim();
   if (!line) return undefined;
-  try {
-    const row = JSON.parse(line) as unknown;
-    return record(row) ? row : undefined;
-  } catch {
-    return undefined;
-  }
+  let row: unknown;
+  try { row = JSON.parse(line); }
+  catch { throw new UnsupportedCodexRolloutError('malformed Codex rollout JSONL'); }
+  if (!record(row)) throw new UnsupportedCodexRolloutError('invalid Codex rollout JSONL row');
+  return row;
 }
 
 function inspectRow(bytes: any, offset: number, unsafeNewerHistory: boolean): { checkpoint?: number; unsafe: boolean } {
@@ -271,6 +275,7 @@ async function parseForwardRange(file: Awaited<ReturnType<typeof open>>, start: 
     }
     position += chunk.length;
   }
+  if (position < end) throw new UnsupportedCodexRolloutError('Codex rollout changed while reading');
   if (pending.length) consume(pending.length === 1 ? pending[0] : Buffer.concat(pending, pendingBytes));
   return messages;
 }

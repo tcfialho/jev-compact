@@ -1,6 +1,7 @@
 import { appendFile, chmod, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { enabledPluginDataDir } from './plugin-installation.js';
 import type { CallDecision, CompactStats, Message } from './types.js';
 
 export interface SessionState {
@@ -58,11 +59,21 @@ export interface HistoryRow {
 }
 
 function safe(value: string): string { return value.replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 180); }
-export function dataDir(env = process.env): string { return env.PLUGIN_DATA ?? env.JEV_COMPACT_DATA_DIR ?? join(homedir(), '.codex', 'jev-compact'); }
+
+export function dataDir(env = process.env): string {
+  return env.PLUGIN_DATA ?? env.JEV_COMPACT_DATA_DIR ?? enabledPluginDataDir(env) ?? join(env.CODEX_HOME ?? join(homedir(), '.codex'), 'jev-compact');
+}
 export function statePath(sessionId: string, env = process.env): string { return join(dataDir(env), 'sessions', `${safe(sessionId)}.json`); }
 export function contextPath(sessionId: string, env = process.env): string { return join(dataDir(env), 'sessions', `${safe(sessionId)}.context.txt`); }
 export function messagesPath(sessionId: string, env = process.env): string { return join(dataDir(env), 'sessions', `${safe(sessionId)}.messages.json`); }
 export function historyPath(env = process.env): string { return join(dataDir(env), 'history.jsonl'); }
+
+export function readableHistoryPaths(env = process.env): string[] {
+  const current = historyPath(env);
+  if (env.PLUGIN_DATA || env.JEV_COMPACT_DATA_DIR || !enabledPluginDataDir(env)) return [current];
+  const legacy = join(env.CODEX_HOME ?? join(homedir(), '.codex'), 'jev-compact', 'history.jsonl');
+  return legacy === current ? [current] : [legacy, current];
+}
 
 async function ensurePrivateDir(path: string): Promise<void> {
   await mkdir(path, { recursive: true, mode: 0o700 });
@@ -220,9 +231,19 @@ export async function tryAppendHistory(row: HistoryRow, env = process.env): Prom
 }
 
 export async function readHistory(env = process.env): Promise<HistoryRow[]> {
-  try {
-    return (await readFile(historyPath(env), 'utf8')).split(/\r?\n/).filter(Boolean).flatMap((line: string) => {
-      try { return [JSON.parse(line) as HistoryRow]; } catch { return []; }
-    });
-  } catch { return []; }
+  const rows = new Map<string, HistoryRow>();
+  for (const path of readableHistoryPaths(env)) {
+    let lines: string[];
+    try { lines = (await readFile(path, 'utf8')).split(/\r?\n/); }
+    catch { continue; }
+    for (const line of lines) {
+      if (!line) continue;
+      let row: HistoryRow;
+      try { row = JSON.parse(line) as HistoryRow; } catch { continue; }
+      if (!row || typeof row !== 'object' || typeof row.at !== 'string' || typeof row.sessionId !== 'string' || typeof row.status !== 'string') continue;
+      const key = row.runId ? `${row.sessionId}\u0000${row.runId}\u0000${row.phase ?? ''}\u0000${row.status}` : line;
+      rows.set(key, row);
+    }
+  }
+  return [...rows.values()].sort((left, right) => left.at.localeCompare(right.at));
 }

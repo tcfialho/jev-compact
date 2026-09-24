@@ -28,12 +28,18 @@ async function loadHookConfig(path) {
 }
 function unixCommand(cliPath) { return `node ${JSON.stringify(cliPath)} hook --jev-compact`; }
 function windowsCommand(cliPath) { return `node "${cliPath.replace(/"/g, '""')}" hook --jev-compact`; }
-function ours(entry) {
-    return entry.hooks.some((hook) => (typeof hook.command === 'string' && hook.command.includes(TAG)) ||
+function oursHook(hook) {
+    return ((typeof hook.command === 'string' && hook.command.includes(TAG)) ||
         (typeof hook.commandWindows === 'string' && hook.commandWindows.includes(TAG)));
 }
+function ours(entry) { return entry.hooks.some(oursHook); }
+function withoutOurs(entry) {
+    const hooks = entry.hooks.filter((hook) => !oursHook(hook));
+    return hooks.length ? { ...entry, hooks } : undefined;
+}
+function codexHome(env) { return env.CODEX_HOME ?? join(homedir(), '.codex'); }
 export function runtimeDir(env = process.env) {
-    return env.JEV_COMPACT_RUNTIME_DIR ?? join(homedir(), '.codex', 'jev-compact', 'runtime');
+    return env.JEV_COMPACT_RUNTIME_DIR ?? join(codexHome(env), 'jev-compact', 'runtime');
 }
 /** Copy the compiled runtime to a stable location so setup does not depend on the extracted checkout. */
 export async function installRuntime(cliPath, env = process.env) {
@@ -77,7 +83,7 @@ export async function installRuntime(cliPath, env = process.env) {
     return join(target, 'cli.js');
 }
 export async function inspectHooks(env = process.env) {
-    const path = env.CODEX_HOOKS_FILE ?? join(homedir(), '.codex', 'hooks.json');
+    const path = env.CODEX_HOOKS_FILE ?? join(codexHome(env), 'hooks.json');
     let config;
     try {
         ({ config } = await loadHookConfig(path));
@@ -96,7 +102,7 @@ function commandHook(command, commandWindows, extra = {}) {
     return { type: 'command', command, commandWindows, ...extra };
 }
 export async function installHooks(cliPath, env = process.env) {
-    const path = env.CODEX_HOOKS_FILE ?? join(homedir(), '.codex', 'hooks.json');
+    const path = env.CODEX_HOOKS_FILE ?? join(codexHome(env), 'hooks.json');
     const { config, existed } = await loadHookConfig(path);
     const before = JSON.stringify(config);
     config.hooks ??= {};
@@ -105,7 +111,7 @@ export async function installHooks(cliPath, env = process.env) {
     const commandWindows = windowsCommand(resolved);
     const add = (name, entry) => {
         const list = config.hooks[name] ?? [];
-        config.hooks[name] = [...list.filter((candidate) => !ours(candidate)), entry];
+        config.hooks[name] = [...list.map(withoutOurs).filter((candidate) => candidate !== undefined), entry];
     };
     add('PreCompact', { matcher: 'manual|auto', hooks: [commandHook(command, commandWindows, { timeout: 120, statusMessage: 'Selecting retained context with Jev' })] });
     add('PostCompact', { matcher: 'manual|auto', hooks: [commandHook(command, commandWindows, { timeout: 10 })] });
@@ -120,7 +126,7 @@ export async function installHooks(cliPath, env = process.env) {
     return path;
 }
 export async function uninstallHooks(env = process.env) {
-    const path = env.CODEX_HOOKS_FILE ?? join(homedir(), '.codex', 'hooks.json');
+    const path = env.CODEX_HOOKS_FILE ?? join(codexHome(env), 'hooks.json');
     let loaded;
     try {
         loaded = await loadHookConfig(path);
@@ -134,7 +140,7 @@ export async function uninstallHooks(env = process.env) {
     const before = JSON.stringify(config);
     if (config.hooks)
         for (const key of Object.keys(config.hooks))
-            config.hooks[key] = (config.hooks[key] ?? []).filter((entry) => !ours(entry));
+            config.hooks[key] = (config.hooks[key] ?? []).map(withoutOurs).filter((entry) => entry !== undefined);
     if (JSON.stringify(config) === before)
         return path;
     await copyFile(path, `${path}.bak.${Date.now()}`);

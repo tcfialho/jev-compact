@@ -4,7 +4,7 @@ import { mkdtemp, readFile, writeFile, access, utimes, readdir, rm, mkdir } from
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { prepareState, markReady, claimReady, dataDir, messagesPath, statePath, sweep } from '../dist/store.js';
-import { installHooks, inspectHooks, installRuntime } from '../dist/install.js';
+import { installHooks, inspectHooks, installRuntime, runtimeDir, uninstallHooks } from '../dist/install.js';
 
 const stats = { messagesBefore: 2, messagesAfter: 1, charsBefore: 1000, charsAfter: 300, calls: 1, kept: 0, resultsTruncated: 0, callsDropped: 1, pinned: 0, stateTokens: 100, stateStage: 'full', requests: 1, jevInputTokens: 0, jevOutputTokens: 0, ms: 5 };
 
@@ -47,7 +47,68 @@ test('installer never overwrites an existing malformed hooks file', async () => 
   assert.equal(await readFile(file, 'utf8'), broken);
 });
 
+test('custom Codex home keeps hooks, runtime and data together', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jev-codex-home-'));
+  const env = { CODEX_HOME: root };
+  assert.equal((await inspectHooks(env)).path, join(root, 'hooks.json'));
+  assert.equal(runtimeDir(env), join(root, 'jev-compact', 'runtime'));
+  assert.equal(dataDir(env), join(root, 'jev-compact'));
+});
+
+test('legacy hook removal preserves other commands in the same entry', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jev-mixed-hooks-'));
+  const file = join(root, 'hooks.json');
+  await writeFile(file, JSON.stringify({ hooks: { PreCompact: [{ matcher: 'manual', hooks: [
+    { type: 'command', command: 'node legacy hook --jev-compact' },
+    { type: 'command', command: 'node unrelated.js' },
+  ] }] } }));
+  await uninstallHooks({ CODEX_HOOKS_FILE: file });
+  const config = JSON.parse(await readFile(file, 'utf8'));
+  assert.equal(config.hooks.PreCompact[0].matcher, 'manual');
+  assert.deepEqual(config.hooks.PreCompact[0].hooks, [{ type: 'command', command: 'node unrelated.js' }]);
+  assert.equal((await readdir(root)).filter((name) => name.startsWith('hooks.json.bak.')).length, 1);
+});
+
 import { handleHook } from '../dist/hooks.js';
+
+test('plugin migrates legacy hooks without running twice in the same session', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jev-plugin-migration-'));
+  const file = join(root, 'hooks.json');
+  await writeFile(file, JSON.stringify({ hooks: { PreCompact: [{ hooks: [
+    { type: 'command', command: 'node legacy hook --jev-compact' },
+  ] }] } }));
+  const env = { PLUGIN_ROOT: join(root, 'plugin'), CODEX_HOME: root, CODEX_HOOKS_FILE: file, JEV_COMPACT_DATA_DIR: join(root, 'data') };
+  const event = { session_id: 'migration-session', hook_event_name: 'PreCompact', transcript_path: null };
+  const first = await handleHook({ session_id: 'migration-session', hook_event_name: 'SessionStart', source: 'startup' }, env);
+  assert.equal(first.systemMessage, undefined);
+  assert.equal((await inspectHooks(env)).events.length, 0);
+  const sameSession = await handleHook(event, env);
+  assert.equal(sameSession.systemMessage, undefined);
+  await handleHook({ session_id: 'migration-session', hook_event_name: 'SessionStart', source: 'resume' }, env);
+  const nextSession = await handleHook(event, env);
+  assert.match(nextSession.systemMessage, /native compaction only/);
+});
+
+test('plugin startup reports a missing key from its own environment', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jev-plugin-key-'));
+  const env = { PLUGIN_ROOT: join(root, 'plugin'), CODEX_HOME: root, JEV_COMPACT_CONFIG_DIR: join(root, 'config') };
+  const result = await handleHook({ session_id: 'missing-key', hook_event_name: 'SessionStart', source: 'startup' }, env);
+  assert.match(result.systemMessage, /needs an API key/);
+});
+
+test('plugin reports a migration error and preserves older hooks', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jev-migration-error-'));
+  const hookFile = join(root, 'hooks.json');
+  await writeFile(hookFile, JSON.stringify({ hooks: { PreCompact: [{ hooks: [
+    { type: 'command', command: 'node legacy hook --jev-compact' },
+  ] }] } }));
+  await mkdir(join(root, 'jev-compact'));
+  await writeFile(join(root, 'jev-compact', 'migrations'), 'blocked');
+  const env = { PLUGIN_ROOT: join(root, 'plugin'), CODEX_HOME: root, CODEX_HOOKS_FILE: hookFile };
+  const result = await handleHook({ session_id: 'migration-error', hook_event_name: 'SessionStart', source: 'startup' }, env);
+  assert.match(result.systemMessage, /could not migrate older hooks/);
+  assert.deepEqual((await inspectHooks(env)).events, ['PreCompact']);
+});
 
 test('index restore mode injects compact index once, not full retained archive', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jev-restore-'));
@@ -298,7 +359,9 @@ test('post-compaction dedupe injects only retained evidence still missing verbat
 test('stale post-compaction checkpoint never suppresses retained evidence', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jev-dedupe-stale-'));
   const rollout = join(root, 'rollout.jsonl');
-  const compacted = `${JSON.stringify({ type: 'compacted', payload: { window_number: 1, replacement_history: [] } })}\n`;
+  const compacted = `${JSON.stringify({ type: 'compacted', payload: { window_number: 1, replacement_history: [
+    { type: 'message', role: 'assistant', content: [{ text: 'older summary' }] },
+  ] } })}\n`;
   await writeFile(rollout, compacted);
   const env = { JEV_COMPACT_DATA_DIR: join(root, 'data') };
   const retainedMessages = [{ role: 'developer', text: 'critical retained evidence', toolCalls: [] }];

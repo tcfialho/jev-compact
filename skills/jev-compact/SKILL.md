@@ -17,6 +17,7 @@ If the key is missing, use `setup openrouter` or `setup typesafe` from that inst
 
 ## Lifecycle
 
+- `SessionStart(startup/resume/clear)`: check for a usable API key and migrate older Jev Compact hooks before the plugin runs.
 - `PreCompact`: read the Codex rollout, reconstruct model-visible conversation content, score completed tool calls/results with Jev, and write retained sidecars.
 - Codex runs its native compaction unchanged.
 - `PostCompact`: mark the prepared sidecar ready only after compaction succeeds.
@@ -29,16 +30,16 @@ Do not claim that hook mode rewrites the native Codex compaction request. It pre
 - `node "<installedPath>/dist/cli.js" setup openrouter` (OpenRouter)
 - `node "<installedPath>/dist/cli.js" setup typesafe` (TypeSafe)
 - `node "<installedPath>/dist/cli.js" doctor`
-- `jev-compact config`
-- `jev-compact config mode observe`
-- `jev-compact config restore-mode balanced`
-- `jev-compact stats --json`
-- `jev-compact dashboard`
-- `jev-compact compact <rollout.jsonl> --context retained.txt --json retained.json`
+- `node "<installedPath>/dist/cli.js" config`
+- `node "<installedPath>/dist/cli.js" config mode observe`
+- `node "<installedPath>/dist/cli.js" config restore-mode balanced`
+- `node "<installedPath>/dist/cli.js" stats --json`
+- `node "<installedPath>/dist/cli.js" dashboard`
+- `node "<installedPath>/dist/cli.js" compact <rollout.jsonl> --context retained.txt --json retained.json`
 
 ## Files
 
-The data directory is `PLUGIN_DATA`, then `JEV_COMPACT_DATA_DIR`, then `~/.codex/jev-compact`.
+The data directory is `PLUGIN_DATA`, then `JEV_COMPACT_DATA_DIR`, then the active plugin's data directory, then `CODEX_HOME/jev-compact` (or `~/.codex/jev-compact`).
 Per-session files include state, a full retained normalized context archive, and structured retained messages. History metrics are stored in `history.jsonl`.
 
 
@@ -46,7 +47,7 @@ Per-session files include state, a full retained normalized context archive, and
 
 Preferred modes are `preserve` (default), `balanced`, and `minimal`. The restore hooks set Codex `additionalContextLimit` to `0` intentionally so Codex does not apply its own generic hook-output spill on top of jev-compact's restore mode/cap. `JEV_COMPACT_RESTORE_MAX_CHARS` is therefore the plugin-level global cap for the selected evidence payload in all restore modes; mode-specific limits may be smaller.
 
-For normal use, prefer the persistent `jev-compact config` command. The user-facing controls are `mode`, `restore-mode`, `restore-max-chars`, `pin-recent-messages`, `loss-threshold`, and `min-reduction-ratio`. Environment variables remain overrides for automation and compatibility.
+For normal use, prefer `node "<installedPath>/dist/cli.js" config`. The user-facing controls are `mode`, `restore-mode`, `restore-max-chars`, `pin-recent-messages`, `loss-threshold`, and `min-reduction-ratio`. Environment variables remain overrides for automation and compatibility.
 
 `mode=active` is the default. `mode=observe` still runs Jev and the post-compaction membership analysis, records what would have been restored, but returns no `additionalContext` to Codex. `shadow` is a compatibility alias for `observe`.
 
