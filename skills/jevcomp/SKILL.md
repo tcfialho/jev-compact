@@ -11,9 +11,9 @@ Use this skill when the user asks to set up an API key, check readiness, or insp
 
 Find the installed `jevcomp` entry with `codex plugin list --json` and use its `installedPath` to run `dist/cli.js`. Do not assume a global `jevcomp` command exists.
 
-Run `node "<installedPath>/dist/cli.js" doctor --json` first. If `apiKeyConfigured` is true, keep the current provider and key. Run `node "<installedPath>/dist/cli.js" install` to remove any older jevcomp user hooks while keeping the plugin hooks. Check `/hooks` in Codex and confirm PreCompact, PostCompact, SessionStart, and UserPromptSubmit are active.
+Run `node "<installedPath>/dist/cli.js" doctor --json` first. If `apiKeyConfigured` is true, keep the current provider and key. Check `/hooks` in Codex and confirm PreCompact, PostCompact, SessionStart, and UserPromptSubmit are active.
 
-If the key is missing, use `setup openrouter` or `setup typesafe` from that installed CLI path. Ask which provider only when the user has not specified one. Give the exact local command and have the user enter the key in the terminal's masked prompt; never ask for the key in chat. Plugin setup keeps hook management inside Codex. Recheck `doctor --json` and `/hooks` afterward. In plugin mode, `hooksInstalled` describes only standalone user hooks; `pluginRoot` identifies the plugin package.
+If the key is missing or the user wants to change it, use `setup openrouter` or `setup typesafe` from that installed CLI path (plain `setup` asks). Ask which provider only when the user has not specified one. `setup` also removes older standalone jevcomp hooks. Give the exact local command and have the user enter the key in the terminal's masked prompt; never ask for the key in chat. Plugin setup keeps hook management inside Codex. Recheck `doctor --json` and `/hooks` afterward. In plugin mode, `hooksInstalled` describes only standalone user hooks; `pluginRoot` identifies the plugin package.
 
 ## Lifecycle
 
@@ -30,9 +30,9 @@ Do not claim that hook mode rewrites the native Codex compaction request. It pre
 - `node "<installedPath>/dist/cli.js" setup openrouter` (OpenRouter)
 - `node "<installedPath>/dist/cli.js" setup typesafe` (TypeSafe)
 - `node "<installedPath>/dist/cli.js" doctor`
-- `node "<installedPath>/dist/cli.js" config`
-- `node "<installedPath>/dist/cli.js" config mode observe`
-- `node "<installedPath>/dist/cli.js" config restore-mode balanced`
+- `node "<installedPath>/dist/cli.js" settings`
+- `node "<installedPath>/dist/cli.js" settings mode observe`
+- `node "<installedPath>/dist/cli.js" settings restore-mode balanced`
 - `node "<installedPath>/dist/cli.js" stats --json`
 - `node "<installedPath>/dist/cli.js" dashboard` (restarts it; the plugin already starts it at `http://127.0.0.1:43127/` with each Codex session)
 - `node "<installedPath>/dist/cli.js" compact <rollout.jsonl> --context retained.txt --json retained.json`
@@ -47,7 +47,7 @@ Per-session files include state, a full retained normalized context archive, and
 
 Preferred modes are `preserve` (default), `balanced`, and `minimal`. The restore hooks set Codex `additionalContextLimit` to `0` intentionally so Codex does not apply its own generic hook-output spill on top of jevcomp's restore mode/cap. `JEVCOMP_RESTORE_MAX_CHARS` is therefore the plugin-level global cap for the selected evidence payload in all restore modes; mode-specific limits may be smaller.
 
-For normal use, prefer `node "<installedPath>/dist/cli.js" config`. The user-facing controls are `mode`, `restore-mode`, `restore-max-chars`, `pin-recent-messages`, `loss-threshold`, and `min-reduction-ratio`. Environment variables remain overrides for automation and compatibility.
+For normal use, prefer `node "<installedPath>/dist/cli.js" settings`. The user-facing controls are `mode`, `restore-mode`, `restore-max-chars`, `pin-recent-messages`, `loss-threshold`, and `min-reduction-ratio`. Environment variables remain overrides for automation and compatibility.
 
 `mode=active` is the default. `mode=observe` still runs Jev and the post-compaction membership analysis, records what would have been restored, but returns no `additionalContext` to Codex. `shadow` is a compatibility alias for `observe`.
 

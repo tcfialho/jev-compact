@@ -45,10 +45,10 @@ Then, in Codex:
 
 ```bash
 npm install -g --install-links github:tcfialho/jevcomp
-jevcomp setup openrouter
+jevcomp setup
 ```
 
-For TypeSafe, run `jevcomp setup` instead. Then restart Codex, type `/hooks` and approve the four hooks.
+`setup` asks for OpenRouter or TypeSafe and your key. Then restart Codex, type `/hooks` and approve the four hooks. Run `jevcomp setup` again anytime to change the provider or key.
 
 Keep `--install-links`: without it, current npm versions install a broken link.
 
@@ -146,7 +146,7 @@ jevcomp stats --json
 If you want to measure `jevcomp` on your own Codex sessions before allowing it to add context back, use:
 
 ```bash
-jevcomp config mode observe
+jevcomp settings mode observe
 ```
 
 In `observe` mode the real Jev selection still runs at `PreCompact`, and after native compaction `jevcomp` performs the same exact membership/dedupe analysis it would use in active mode. It records:
@@ -163,7 +163,7 @@ But it returns **no `additionalContext`** to Codex. Native Codex context is ther
 Return to normal behavior with:
 
 ```bash
-jevcomp config mode active
+jevcomp settings mode active
 ```
 
 `shadow` remains accepted as an environment/config alias for `observe`, but `observe` is the preferred user-facing name.
@@ -186,7 +186,7 @@ The restore mode controls how much of the Jev-selected evidence is added back to
 ### `preserve` — default
 
 ```bash
-jevcomp config restore-mode preserve
+jevcomp settings restore-mode preserve
 ```
 
 Uses the most preservation-first reinjection: selected evidence is restored up to the global cap. To stop one enormous tool result from crowding out everything else, an individual very large result is represented by a bounded head+tail excerpt in the injected payload; the full retained normalized archive always stays on disk and its path is included.
@@ -196,7 +196,7 @@ Use this when continuity/exact details matter more than minimizing the extra con
 ### `balanced`
 
 ```bash
-jevcomp config restore-mode balanced
+jevcomp settings restore-mode balanced
 ```
 
 Injects a compact index plus a bounded evidence excerpt. The full retained normalized archive stays on disk.
@@ -206,7 +206,7 @@ This reduces the context added by `jevcomp` while still giving Codex some exact 
 ### `minimal`
 
 ```bash
-jevcomp config restore-mode minimal
+jevcomp settings restore-mode minimal
 ```
 
 Injects only the compact index and file pointers. The full retained normalized archive stays on disk.
@@ -220,13 +220,13 @@ Legacy values `full`, `hybrid` and `index` are still accepted as aliases for `pr
 Defaults are preservation-first. You can change the user-facing settings without editing shell files; this matters when Codex is launched from a desktop app.
 
 ```bash
-jevcomp config
-jevcomp config mode observe
-jevcomp config restore-mode balanced
-jevcomp config restore-max-chars 40000
-jevcomp config pin-recent-messages 8
-jevcomp config loss-threshold 0.4
-jevcomp config min-reduction-ratio 0.20
+jevcomp settings
+jevcomp settings mode observe
+jevcomp settings restore-mode balanced
+jevcomp settings restore-max-chars 40000
+jevcomp settings pin-recent-messages 8
+jevcomp settings loss-threshold 0.4
+jevcomp settings min-reduction-ratio 0.20
 ```
 
 | Setting | Default | Plain meaning | If you increase it |
@@ -263,12 +263,7 @@ Provider endpoint/model overrides (`JEV_MODEL`, `JEV_BASE_URL`, `OPENROUTER_JEV_
 
 ## Provider configuration
 
-Normal first-time use is the `setup` command shown at the top of this README. It stores the selected provider/key and prepares the hooks for the installation method in use. Use `configure` when you want to change the provider or key. The five normal behavior settings use the same config directory, so desktop-launched Codex sessions do not depend on shell startup files.
-
-```bash
-jevcomp configure typesafe
-jevcomp configure openrouter
-```
+`jevcomp setup` saves the provider and key (run it again to change them). Settings are saved in the same folder, so Codex opened from the desktop does not depend on terminal startup files.
 
 Environment variables are also supported and override saved configuration:
 

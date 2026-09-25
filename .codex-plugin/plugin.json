@@ -1,6 +1,6 @@
 {
   "name": "jevcomp",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Jev-guided Codex compaction with exact post-compaction dedupe and observe mode.",
   "author": {
     "name": "jevcomp contributors"

@@ -22,47 +22,45 @@ function fmt(n) { return Number(n || 0).toLocaleString(); }
 function chars(n) { return n >= 1_000_000 ? `${(n / 1_000_000).toFixed(2)}M chars` : n >= 1_000 ? `${(n / 1_000).toFixed(1)}k chars` : `${fmt(n)} chars`; }
 function help() {
     const pluginRoot = enabledPluginRoot();
-    if (pluginRoot) {
-        const command = `node "${join(pluginRoot, 'dist', 'cli.js')}"`;
-        console.log(`jevcomp plugin
-
-First-time setup:
-  ${command} setup openrouter    Save an OpenRouter API key
-  ${command} setup typesafe      Save a TypeSafe API key
-  ${command} doctor              Check provider, key and plugin hooks
-
-Useful commands:
-  ${command} config              Show settings
-  ${command} stats               Show measured compaction statistics
-  ${command} dashboard           Restart the local dashboard
-
-Dashboard: http://127.0.0.1:${dashboardPort(process.env)}/ (starts with each Codex session)
-Open /hooks in Codex to review the plugin hooks.`);
-        return;
-    }
+    const command = pluginRoot ? `node "${join(pluginRoot, 'dist', 'cli.js')}"` : 'jevcomp';
+    const pad = (text) => `  ${command} ${text}`;
     console.log(`jevcomp
 
-First-time setup:
-  jevcomp setup                  TypeSafe: save key + install Codex hooks
-  jevcomp setup openrouter       OpenRouter: save key + install Codex hooks
-  jevcomp configure PROVIDER     Change provider/key without reinstalling hooks
-  jevcomp install                Point Codex hooks at this checkout (development/local use)
-  jevcomp doctor                 Verify everything is ready
-  jevcomp config                 Show user-facing settings
-  jevcomp config NAME VALUE      Save a setting (works with desktop Codex too)
-  jevcomp config reset           Reset saved user settings to defaults
+${pad('setup')}                  Choose OpenRouter or TypeSafe, save your key and connect to Codex
+${pad('doctor')}                 Check that everything is ready
+${pad('stats')}                  Show what jevcomp did so far
+${pad('dashboard')}              Restart the dashboard
+${pad('settings')}               Show settings
+${pad('settings NAME VALUE')}    Change a setting ("settings reset" restores the defaults)
+${pad('uninstall')}              Disconnect jevcomp from Codex
 
-Useful commands:
-  jevcomp dashboard [--port N]   Restart the local dashboard
-  jevcomp stats [--json]         Measured local compaction statistics
-  jevcomp compact FILE [--context FILE] [--json FILE]
-                                     Preview Jev selection on a Codex rollout
-  jevcomp uninstall              Remove only jevcomp hooks
-
-Dashboard: http://127.0.0.1:${dashboardPort(process.env)}/ (starts with each Codex session)
-Environment variables remain supported and override saved configuration.
-Tip: "jevcomp config mode observe" runs Jev and measures what would happen without changing Codex context.
-Run "jevcomp doctor --json" for machine-readable readiness details.`);
+Dashboard: ${dashboardAddress()} (starts with each Codex session)`);
+}
+function dashboardAddress() { return `http://127.0.0.1:${dashboardPort(process.env)}/`; }
+async function ask(question) {
+    process.stdout.write(question);
+    process.stdin.resume();
+    return new Promise((resolve) => {
+        process.stdin.once('data', (chunk) => { process.stdin.pause(); resolve(String(chunk).trim()); });
+    });
+}
+function interactive() { return !!process.stdin.isTTY && !!process.stdout.isTTY; }
+async function chooseProvider(requested) {
+    if (requested === 'openrouter' || requested === 'typesafe')
+        return requested;
+    if (requested)
+        throw new Error('usage: jevcomp setup [openrouter|typesafe]');
+    const current = resolveProvider({ env: process.env });
+    if (!interactive())
+        return current;
+    const answer = await ask(`Provider: 1) OpenRouter  2) TypeSafe  [${current === 'openrouter' ? 1 : 2}]: `);
+    if (!answer)
+        return current;
+    if (answer === '1' || /^openrouter$/i.test(answer))
+        return 'openrouter';
+    if (answer === '2' || /^typesafe$/i.test(answer))
+        return 'typesafe';
+    throw new Error(`unknown provider: ${answer}`);
 }
 async function secret(prompt) {
     if (!process.stdin.isTTY || !process.stdout.isTTY || typeof process.stdin.setRawMode !== 'function')
@@ -134,23 +132,38 @@ function printSettings(settings) {
     if (settings.restoreModeWarning)
         console.log(`warning               ${settings.restoreModeWarning}`);
 }
-async function configureProvider(provider) {
-    const key = await secret(`${provider === 'typesafe' ? 'TypeSafe' : 'OpenRouter'} API key: `);
-    const saved = await saveProviderConfiguration(provider, key, process.env);
-    if (enabledPluginRoot())
-        await uninstallHooks();
-    console.log(`Configured ${provider}.\nKey saved: ${saved.keyFile}\nProvider preference saved: ${saved.providerFile}`);
+async function saveKey(provider) {
+    const label = provider === 'typesafe' ? 'TypeSafe' : 'OpenRouter';
+    const saved = hasSavedProviderKey(provider, process.env);
+    if (saved && !interactive())
+        return;
+    const key = await secret(`${label} API key${saved ? ' (Enter keeps the saved key)' : ''}: `);
+    if (key) {
+        await saveProviderConfiguration(provider, key, process.env);
+        console.log(`${label} key saved.`);
+        return;
+    }
+    if (saved)
+        return;
+    if (resolveApiKey(provider, { env: process.env })) {
+        console.log(`Using the ${label} key from this terminal's environment; Codex opened elsewhere may not see it.`);
+        return;
+    }
+    throw new Error(`${label} API key is required`);
 }
-async function installAndExplain(cliPath = fileURLToPath(import.meta.url), commandPrefix = 'jevcomp') {
-    const path = await installHooks(cliPath);
-    const ready = await readiness();
-    console.log(`jevcomp hooks installed: ${path}`);
-    console.log(`Provider: ${ready.provider} · API key: ${ready.apiKeyConfigured ? 'configured' : 'MISSING'}`);
-    if (!ready.apiKeyConfigured)
-        console.log(`Configure it with: ${commandPrefix} configure ${ready.provider}`);
-    console.log('Next: restart Codex, open /hooks once, and enable/trust the jevcomp hooks.');
-    console.log(`Dashboard: http://127.0.0.1:${dashboardPort(process.env)}/ (starts with each Codex session)`);
-    console.log(`Then run: ${commandPrefix} doctor`);
+async function setup(requestedProvider) {
+    const provider = await chooseProvider(requestedProvider);
+    await saveKey(provider);
+    if (enabledPluginRoot()) {
+        await uninstallHooks();
+        console.log('Codex plugin detected. In Codex, type /hooks and approve the four jevcomp hooks.');
+    }
+    else {
+        const runtimeCli = await installRuntime(fileURLToPath(import.meta.url), process.env);
+        await installHooks(runtimeCli);
+        console.log('Connected to Codex. Restart Codex, type /hooks and approve the four jevcomp hooks.');
+    }
+    console.log(`Dashboard: ${dashboardAddress()} (starts with each Codex session)`);
 }
 async function main() {
     adoptLegacyEnvironment(process.env);
@@ -163,26 +176,19 @@ async function main() {
         process.stdout.write(`${JSON.stringify(out)}\n`);
         return;
     }
-    if (cmd === 'configure') {
-        const provider = args[0];
-        if (provider !== 'typesafe' && provider !== 'openrouter')
-            throw new Error('usage: jevcomp configure <typesafe|openrouter>');
-        await configureProvider(provider);
-        return;
-    }
-    if (cmd === 'config') {
+    if (cmd === 'settings' || cmd === 'config') {
         if (!args.length) {
             printSettings(userSettings(process.env));
             return;
         }
         if (args[0] === 'reset') {
             await resetUserSettings(process.env);
-            console.log('Saved jevcomp settings reset to defaults.');
+            console.log('Settings reset to defaults.');
             printSettings(userSettings(process.env));
             return;
         }
         if (args.length < 2)
-            throw new Error('usage: jevcomp config <mode|restore-mode|restore-max-chars|pin-recent-messages|loss-threshold|min-reduction-ratio> <value>');
+            throw new Error('usage: jevcomp settings <mode|restore-mode|restore-max-chars|pin-recent-messages|loss-threshold|min-reduction-ratio> <value>');
         const name = args[0];
         if (!['mode', 'restore-mode', 'restore-max-chars', 'pin-recent-messages', 'loss-threshold', 'min-reduction-ratio'].includes(name))
             throw new Error(`unknown setting: ${args[0]}`);
@@ -192,29 +198,7 @@ async function main() {
         return;
     }
     if (cmd === 'setup') {
-        const provider = (args[0] ?? resolveProvider({ env: process.env }));
-        if (provider !== 'typesafe' && provider !== 'openrouter')
-            throw new Error('usage: jevcomp setup [typesafe|openrouter]');
-        if (!hasSavedProviderKey(provider, process.env))
-            await configureProvider(provider);
-        if (enabledPluginRoot()) {
-            await uninstallHooks();
-            console.log('Open /hooks in Codex and confirm the four jevcomp hooks are active.');
-            console.log(`Dashboard: http://127.0.0.1:${dashboardPort(process.env)}/ (starts with each Codex session)`);
-            return;
-        }
-        const runtimeCli = await installRuntime(fileURLToPath(import.meta.url), process.env);
-        console.log(`Runtime installed: ${runtimeCli}`);
-        await installAndExplain(runtimeCli, `node \"${runtimeCli}\"`);
-        return;
-    }
-    if (cmd === 'install') {
-        if (enabledPluginRoot()) {
-            await uninstallHooks();
-            console.log('jevcomp hooks are supplied by the plugin. Open /hooks in Codex to review them.');
-            return;
-        }
-        await installAndExplain();
+        await setup(args[0]);
         return;
     }
     if (cmd === 'uninstall') {
@@ -237,24 +221,14 @@ async function main() {
         console.log(`    Model: ${value.model}`);
         console.log(`    Hooks: ${value.pluginRoot ? join(value.pluginRoot, 'hooks', 'hooks.json') : value.hooksFile}`);
         console.log(`    Data:  ${value.dataDir}`);
-        console.log(`    Dashboard: ${value.dashboardUrl ?? 'not running (the plugin starts it with the next Codex session or prompt)'}`);
+        console.log(`    Dashboard: ${value.dashboardUrl ?? `${dashboardAddress()} (not running; starts with the next Codex session)`}`);
         console.log(`    Mode: ${value.settings.mode}${value.settings.mode === 'observe' ? ' (measures only; no restore context is injected)' : ''}`);
         console.log(`    Restore: ${value.settings.restoreMode} · max ${fmt(value.settings.restoreMaxChars)} chars`);
         console.log(`    Pruning: loss <= ${value.settings.lossThreshold.toFixed(2)} · pin ${fmt(value.settings.pinRecentMessages)} recent messages · require ${(value.settings.minReductionRatio * 100).toFixed(0)}% reduction`);
         if (value.settings.restoreModeWarning)
             console.log(`WARN  ${value.settings.restoreModeWarning}`);
-        if (value.pluginRoot) {
-            if (!value.apiKeyConfigured)
-                console.log(`\nFix API key: node "${fileURLToPath(import.meta.url)}" configure ${value.provider}`);
-        }
-        else if (!value.apiKeyConfigured && !value.hooksInstalled) {
-            console.log(`\nFix both: jevcomp setup${value.provider === 'openrouter' ? ' openrouter' : ''}`);
-        }
-        else {
-            if (!value.apiKeyConfigured)
-                console.log(`\nFix API key: jevcomp configure ${value.provider}`);
-            if (!value.hooksInstalled)
-                console.log('\nFix hooks: jevcomp install');
+        if (!value.apiKeyConfigured || (!value.pluginRoot && !value.hooksInstalled)) {
+            console.log(`\nFix: ${value.pluginRoot ? `node "${fileURLToPath(import.meta.url)}"` : 'jevcomp'} setup`);
         }
         return;
     }
