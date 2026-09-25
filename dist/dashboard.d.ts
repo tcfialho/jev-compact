@@ -38,6 +38,19 @@ interface RunSummary {
     membershipStatus?: string;
     detail?: string;
 }
+/** Blocks keep transcript order, oldest first, so the chart reads left to right like the conversation. */
+interface LastCompaction {
+    at: string;
+    status: RunSummary['status'];
+    charsBefore: number;
+    injectedPayloadChars: number;
+    blocks: {
+        tool: string;
+        label: string;
+        decision: 'kept' | 'short' | 'drop' | 'pin';
+        chars: number;
+    }[];
+}
 /** Build only measured statistics. No chars/4 or claimed Codex billing-token savings. */
 export declare function stats(env?: Record<string, string | undefined>): Promise<{
     measured: boolean;
@@ -88,6 +101,7 @@ export declare function stats(env?: Record<string, string | undefined>): Promise
         pinned: boolean;
     }[];
     runs: RunSummary[];
+    lastCompaction: LastCompaction | null;
     recentEvents: HistoryRow[];
 }>;
 export declare function startDashboard(port?: number, env?: Record<string, string | undefined>): Promise<{

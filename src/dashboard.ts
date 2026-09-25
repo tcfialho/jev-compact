@@ -46,6 +46,25 @@ interface RunSummary {
   detail?: string;
 }
 
+/** Blocks keep transcript order, oldest first, so the chart reads left to right like the conversation. */
+interface LastCompaction {
+  at: string;
+  status: RunSummary['status'];
+  charsBefore: number;
+  injectedPayloadChars: number;
+  blocks: { tool: string; label: string; decision: 'kept' | 'short' | 'drop' | 'pin'; chars: number }[];
+}
+
+// Previews are cut at a fixed length, so the JSON is often incomplete and has to be read field by field.
+function commandLabel(tool: string, preview: string | undefined): string {
+  const text = preview ?? '';
+  for (const field of ['cmd', 'command', 'file_path', 'path', 'pattern', 'query']) {
+    const match = new RegExp(`(?:^|[{,\\s])"?${field}"?\\s*:\\s*(\\[\\s*)?"((?:[^"\\\\]|\\\\.)*)`).exec(text);
+    if (match?.[2]) return match[2].replace(/\\(["\\/])/g, '$1');
+  }
+  return text.trim() || tool;
+}
+
 function positive(value: number | undefined): number {
   return Number.isFinite(value) ? Math.max(0, value ?? 0) : 0;
 }
@@ -183,6 +202,20 @@ export async function stats(env = process.env) {
   }
   runs.sort((a, b) => b.at.localeCompare(a.at));
 
+  const latest = prepared.reduce<HistoryRow | undefined>((last, row) => !last || row.at > last.at ? row : last, undefined);
+  const lastCompaction: LastCompaction | null = latest ? {
+    at: latest.at,
+    status: runs.find((run) => run.runId === runKey(latest))?.status ?? 'prepared',
+    charsBefore: positive(latest.stats?.charsBefore),
+    injectedPayloadChars: positive(restoresByRun.get(runKey(latest))?.injectedPayloadChars),
+    blocks: (latest.decisions ?? []).map((decision) => ({
+      tool: decision.name,
+      label: commandLabel(decision.name, decision.inputPreview),
+      decision: decision.pinned ? 'pin' : decision.action === 'drop_call' ? 'drop' : decision.action === 'truncate_result' ? 'short' : 'kept',
+      chars: positive(decision.originalChars),
+    })),
+  } : null;
+
   return {
     measured: true,
     note: 'Primary context-reduction figures are measured from local transcript characters. Jev token usage is reported by the Jev provider. Codex billing-token savings are not inferred.',
@@ -221,6 +254,7 @@ export async function stats(env = process.env) {
     byTool: [...byTool.values()].sort((a, b) => b.removedChars - a.removedChars),
     recentDecisions,
     runs: runs.slice(0, 100),
+    lastCompaction,
     recentEvents: rows.slice(-100).reverse(),
   };
 }
@@ -231,7 +265,7 @@ function page(token: string): string {
 <meta name="jevcomp-token" content="${token}">
 <title>jevcomp · dashboard</title>
 <style>
-:root{color-scheme:dark;--bg:#151514;--panel:#20201f;--panel2:#252524;--line:#393936;--text:#f3f3f1;--muted:#a2a29e;--green:#5bc66b;--bar:#73816e;--orange:#ee7847;--amber:#e2ac42;--blue:#8cacfa}
+:root{color-scheme:dark;--bg:#151514;--panel:#20201f;--panel2:#252524;--line:#393936;--text:#f3f3f1;--muted:#a2a29e;--green:#5bc66b;--bar:#73816e;--orange:#ee7847;--amber:#e2ac42;--blue:#8cacfa;--removed:#41443f}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font:13px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
 main{max-width:1160px;margin:auto;padding:22px 18px 56px}
@@ -275,6 +309,20 @@ th{font-size:10px;color:var(--muted);font-weight:600}tr:last-child td{border-bot
 .tag.success{border-color:#316e3b;color:var(--green);background:#1a3020}.tag.fallback{border-color:#81462f;color:var(--orange);background:#34241d}
 .tag.pending{border-color:#775b2b;color:var(--amber);background:#332b1c}.tag.neutral{border-color:#485370;color:var(--blue);background:#232a39}
 .tag.protected{border-color:#66567b;color:#bda2e8;background:#2b2532}
+.tag.removed{border-color:#55584f;color:var(--muted);background:var(--removed)}
+.last-run{margin-bottom:18px}.last-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.legend{display:flex;gap:6px;flex-wrap:wrap}.legend .tag{cursor:default}
+.tape-wrap{position:relative;margin-top:14px}
+.tape{display:flex;gap:2px;height:42px;border-radius:7px;overflow:hidden}
+.tape i{flex:1 1 0;min-width:2px;transition:opacity .15s}.tape i.active{filter:brightness(1.25)}
+.tape .kept{background:var(--green)}.tape .short{background:var(--amber)}.tape .drop{background:var(--removed)}.tape .pin{background:#bda2e8}
+.tape[data-focus] i{opacity:.2}
+.tape[data-focus="kept"] i.kept,.tape[data-focus="short"] i.short,.tape[data-focus="drop"] i.drop,.tape[data-focus="pin"] i.pin{opacity:1}
+.tape-tip{position:absolute;bottom:calc(100% + 8px);transform:translateX(-50%);background:var(--text);color:var(--bg);border-radius:7px;padding:6px 9px;font-size:11px;white-space:nowrap;pointer-events:none;z-index:2}
+.tape-tip b{font-family:ui-monospace,"Cascadia Code",Consolas,monospace;font-weight:600}
+.tape-axis{display:flex;justify-content:space-between;gap:12px;margin-top:6px;font-size:10px;color:var(--muted)}
+.sent{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:14px;align-items:center;margin-top:16px;padding-top:14px;border-top:1px solid var(--line);font-size:12px}
+.sent .track{height:8px}.sent .track i{background:var(--blue)}.sent b{font-variant-numeric:tabular-nums}
 .error{margin-bottom:16px;padding:12px 16px;border:1px solid #81462f;border-radius:8px;color:var(--orange)}
 footer{color:var(--muted);font-size:11px;margin-top:18px}
 @media(max-width:850px){.hero,.pair{grid-template-columns:1fr}.reduction-number{margin:30px 0}.detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -314,6 +362,7 @@ footer{color:var(--muted);font-size:11px;margin-top:18px}
 <nav class="tabs" role="tablist" aria-label="Seções"><button class="tab" role="tab" id="tab-resumo" aria-selected="true" aria-controls="view-resumo">Resumo</button><button class="tab" role="tab" id="tab-config" aria-selected="false" aria-controls="view-config">Configurações</button></nav>
 <div id="error"></div>
 <div id="view-resumo" role="tabpanel" aria-labelledby="tab-resumo">
+<section class="panel last-run" aria-labelledby="last-title"><div class="last-head"><h2 id="last-title">Última compactação</h2><div class="legend" id="last-legend"></div></div><div id="last-run"></div></section>
 <section class="hero" aria-label="Resumo do Jev">
  <div class="panel reduction-card"><div><h2>Quanto texto foi reduzido?</h2><p class="sub">Nas compactações em que o jevcomp enviou texto ao Codex.</p></div><strong class="reduction-number" id="reduction">—</strong><div class="reduction-foot"><div class="track"><i id="reduction-bar"></i></div><p><b id="removed">—</b><br><span class="muted">do texto lido nessas compactações</span></p></div></div>
  <div class="hero-metrics">
@@ -365,10 +414,46 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const when=s=>{const d=new Date(s);return Number.isNaN(d.getTime())?'—':d.toLocaleString('pt-BR')};
 const time=s=>{const d=new Date(s);return Number.isNaN(d.getTime())?'—':d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})};
 const metric=(label,number,detail)=>'<div class="metric"><span class="metric-label">'+label+'</span><strong class="metric-number">'+number+'</strong><span class="metric-detail">'+detail+'</span></div>';
-const actionTag=d=>d.pinned?'<span class="tag protected">Recente</span>':d.action==='drop_call'?'<span class="tag neutral">Removido</span>':d.action==='truncate_result'?'<span class="tag pending">Resumido</span>':'<span class="tag success">Inteiro</span>';
+const DECISION={kept:['success','Inteiro'],short:['pending','Resumido'],drop:['removed','Removido'],pin:['protected','Recente']};
+const decisionOf=d=>d.pinned?'pin':d.action==='drop_call'?'drop':d.action==='truncate_result'?'short':'kept';
+const actionTag=d=>{const[cls,label]=DECISION[decisionOf(d)];return '<span class="tag '+cls+'">'+label+'</span>'};
  const STATUS={restored:['success','Enviado ao Codex','O Codex recebeu o que o resumo perdeu.'],nothing_missing:['neutral','Não enviado: resumo já completo','O resumo do Codex já tinha tudo o que o Jev guardou; não havia o que enviar.'],skipped:['neutral','Não enviado: pouco a cortar','Quase tudo ainda era útil: o corte ficaria abaixo do mínimo escolhido em Configurações.'],too_short:['neutral','Não enviado: pouco a cortar','A conversa tinha menos de duas mensagens; não havia o que cortar.'],failed:['fallback','Não enviado: erro','O jevcomp teve um erro antes da compactação e o Codex fez o resumo normal.'],restore_failed:['fallback','Falha ao enviar','O jevcomp não conseguiu ler o que tinha guardado.'],ready:['pending','Aguardando envio','Vai junto do próximo prompt ou do início da próxima sessão.'],prepared:['pending','Aguardando a compactação','O Jev já escolheu; o Codex ainda está resumindo.']};
  const statusTag=r=>{const[cls,label,help]=STATUS[r.status]||STATUS.prepared;const detail=r.status==='failed'&&r.detail?help+' Motivo: '+r.detail:help;return '<span class="tag '+cls+'" title="'+esc(detail)+'">'+label+'</span>'};
  const textAdditional=r=>r.status==='restored'?chars(r.injectedPayloadChars):r.status==='nothing_missing'?'0 caracteres':r.status==='prepared'||r.status==='ready'?'Aguardando':'Não enviado';
+let lastRun=null,lastRunJson='',tapeFocus=null;
+function renderLastRun(last){
+ const json=JSON.stringify(last);
+ if(json===lastRunJson)return;
+ lastRunJson=json;lastRun=last;
+ const legend=document.querySelector('#last-legend'),body=document.querySelector('#last-run');
+ if(!last){document.querySelector('#last-title').textContent='Última compactação';legend.innerHTML='';body.innerHTML='<div class="empty">Ainda não houve compactação com o Jev.</div>';return}
+ const d=new Date(last.at);
+ document.querySelector('#last-title').textContent='Última compactação · '+d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})+' '+time(last.at);
+ const count=k=>last.blocks.filter(b=>b.decision===k).length;
+ legend.innerHTML=Object.entries(DECISION).map(([k,[cls,label]])=>'<span class="tag '+cls+'" data-focus="'+k+'">'+label+' · '+count(k)+'</span>').join('');
+ const blocks=last.blocks.map((b,i)=>'<i class="'+b.decision+'" style="flex-grow:'+Math.max(1,b.chars)+'" data-i="'+i+'"></i>').join('');
+ const tape=last.blocks.length?'<div class="tape-wrap"><div class="tape-tip" hidden></div><div class="tape" role="img" aria-label="Saídas de comandos e leituras de arquivo da última compactação, coloridas pela decisão do Jev"'+(tapeFocus?' data-focus="'+tapeFocus+'"':'')+'>'+blocks+'</div></div><div class="tape-axis"><span>← mais antigo</span><span>cada bloco é um comando; a largura é o tamanho da saída · passe o mouse para ver qual</span><span>mais recente →</span></div>':'<div class="empty">Nenhum comando ou leitura de arquivo nesta compactação.</div>';
+ const sentValue=last.status==='restored'?'<b>'+f(last.injectedPayloadChars)+' de '+chars(last.charsBefore)+'</b>':statusTag(last);
+ const sentBar=last.status==='restored'?'<div class="track"><i style="width:'+Math.max(1,Math.min(100,last.injectedPayloadChars/Math.max(1,last.charsBefore)*100))+'%"></i></div>':'<span></span>';
+ body.innerHTML=tape+'<div class="sent"><span class="muted">Enviado ao Codex depois da compactação</span>'+sentBar+sentValue+'</div>';
+}
+function setTapeFocus(k){tapeFocus=k;const tape=document.querySelector('.tape');if(!tape)return;if(k)tape.dataset.focus=k;else delete tape.dataset.focus}
+document.querySelector('#last-legend').addEventListener('mouseover',e=>{const tag=e.target.closest('[data-focus]');if(tag)setTapeFocus(tag.dataset.focus)});
+document.querySelector('#last-legend').addEventListener('mouseleave',()=>setTapeFocus(null));
+document.querySelector('#last-run').addEventListener('mousemove',e=>{
+ const block=e.target.closest('.tape i'),wrap=document.querySelector('.tape-wrap');if(!wrap)return;
+ const tip=wrap.querySelector('.tape-tip');
+ wrap.querySelectorAll('.tape i.active').forEach(i=>{if(i!==block)i.classList.remove('active')});
+ if(!block||!lastRun){tip.hidden=true;return}
+ const b=lastRun.blocks[Number(block.dataset.i)];
+ block.classList.add('active');
+ tip.innerHTML='<b>'+esc(b.label.slice(0,90))+'</b> · '+chars(b.chars)+' · '+DECISION[b.decision][1];
+ const box=wrap.getBoundingClientRect(),r=block.getBoundingClientRect();
+ tip.hidden=false;
+ const half=tip.offsetWidth/2,center=r.left-box.left+r.width/2;
+ tip.style.left=Math.max(half,Math.min(box.width-half,center))+'px';
+});
+document.querySelector('#last-run').addEventListener('mouseleave',()=>{const wrap=document.querySelector('.tape-wrap');if(!wrap)return;wrap.querySelector('.tape-tip').hidden=true;wrap.querySelectorAll('.tape i.active').forEach(i=>i.classList.remove('active'))});
 function renderChart(runs){
  const completed=runs.filter(r=>r.status==='restored'&&r.charsBefore>0).slice(0,8);
  if(!completed.length)return '<div class="empty">Ainda não houve compactação com envio ao Codex.</div>';
@@ -398,6 +483,7 @@ function refresh(){
   document.querySelector('#last-delivery-detail').textContent=s.latestRestoredAt?'Em '+new Date(s.latestRestoredAt).toLocaleDateString('pt-BR')+'.':'O jevcomp ainda não enviou texto ao Codex.';
   const flowItems=[['Texto da conversa analisado',s.completedCharsBefore,'caracteres antes do corte'],['Texto guardado pelo Jev',s.completedCharsAfter,'caracteres depois do corte'],['Texto enviado ao Codex',s.injectedPayloadChars,'caracteres, dentro do limite configurado']];
   document.querySelector('#flow').innerHTML=flowItems.map(item=>'<div class="flow-node"><span class="label">'+item[0]+'</span><strong>'+(completed?f(item[1]):'—')+'</strong><div class="detail">'+item[2]+'</div></div>').join('<span class="arrow">→</span>');
+  renderLastRun(s.lastCompaction);
   document.querySelector('#rounds-chart').innerHTML=renderChart(s.runs);
   document.querySelector('#decision-stats').innerHTML=renderDecisions(s.byTool);
   const usage=s.jevUsageReportedRequests?f(s.jevUsageReportedRequests)+' de '+f(s.jevRequests)+' requisições com uso reportado':'Uso não reportado pelo provedor';

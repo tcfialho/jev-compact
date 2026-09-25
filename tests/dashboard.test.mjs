@@ -43,11 +43,15 @@ test('dashboard reports measured impact without invented token-savings estimates
   assert.equal(s.byTool[0].tool, 'grep');
   assert.equal(s.byTool[0].removedChars, 4100); // prepared-only run is not presented as realized tool reduction
   assert.equal('estimatedPrunedTokens' in s, false);
+  assert.equal(s.lastCompaction.at, '2026-09-22T12:02:30.000Z');
+  assert.equal(s.lastCompaction.status, 'prepared');
+  assert.deepEqual(s.lastCompaction.blocks.map((b) => [b.decision, b.chars, b.label]), [['drop', 4100, 'q=x'], ['short', 2250, 'a.ts'], ['kept', 1010, 'test']]);
 
   const dashboard = await startDashboard(0, env);
   t.after(() => dashboard.server.close());
   const html = await fetch(dashboard.url).then((r) => r.text());
   assert.match(html, /Quanto texto foi reduzido\?/);
+  assert.match(html, /Última compactação/);
   assert.match(html, /Decisões de retenção/);
   assert.match(html, /Duplicatas evitadas/);
   assert.doesNotMatch(html, /observe/i);
@@ -99,4 +103,17 @@ test('runs with nothing to send or a too-short conversation get their own status
   await appendHistory({ at: '2026-09-25T10:02:00.000Z', runId: 'small', sessionId: 'n3', phase: 'precompact', status: 'skipped', stats: compactStats, detail: 'reduction below 0.15' }, env);
   const statuses = Object.fromEntries((await stats(env)).runs.map((run) => [run.sessionId, run.status]));
   assert.deepEqual(statuses, { n1: 'nothing_missing', n2: 'too_short', n3: 'skipped' });
+});
+
+test('last compaction names each block by its command, even from a cut preview', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jev-dashboard-label-'));
+  const env = { JEVCOMP_DATA_DIR: root };
+  const block = (name, inputPreview) => ({ id: name, callId: name, name, inputPreview, dropLoss: 0.1, truncateLoss: 0.1, action: 'keep', resultChars: 10, originalChars: 10, savedChars: 0, pinned: false });
+  await appendHistory({ at: '2026-09-22T12:00:00.000Z', runId: 'r', sessionId: 's', phase: 'precompact', status: 'prepared', stats: compactStats, decisions: [
+    block('exec_command', '{"cmd":"git diff -- src \\"a b\\"","workdir":"C:\\x'),
+    block('exec', 'const result = await tools.exec_command({ cmd: "npm test", yield_time_ms'),
+    block('read', ''),
+  ] }, env);
+  const s = await stats(env);
+  assert.deepEqual(s.lastCompaction.blocks.map((b) => b.label), ['git diff -- src "a b"', 'npm test', 'read']);
 });
