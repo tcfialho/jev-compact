@@ -352,7 +352,10 @@ th{font-size:11px;color:var(--muted);font-weight:500;text-align:left;padding:0 1
 td{padding:11px 10px;border-top:1px solid var(--line);vertical-align:middle}
 .mini{display:flex;height:6px;width:140px;border-radius:3px;overflow:hidden;background:var(--raised)}
 .mini i{display:block;background:var(--accent)}
-.cut{display:flex;align-items:center;gap:12px}.cut-text{font-size:12px;color:var(--muted);white-space:nowrap}.cut-text b{color:var(--text);font-weight:600}
+.cut-text{font-size:12px;color:var(--muted);white-space:nowrap}.cut-text b{color:var(--text);font-weight:600}
+.ba2-track{height:10px;border-radius:4px;overflow:hidden}.ba2-track>.before{display:block;height:100%;background:color-mix(in srgb,var(--muted) 45%,var(--surface));border-radius:4px;overflow:hidden}.ba2-track .after{display:block;height:100%;background:var(--accent)}
+.ba2-cut{font-size:12px;color:var(--accent);text-align:right}
+.ba5{display:grid;grid-template-columns:180px 118px 40px;gap:12px;align-items:center}.ba5-track{width:180px}.ba5 .cut-text{text-align:left}.ba5 .cut-text.wide{grid-column:span 2}
 .decisions-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
 .filters button{font-size:12px;padding:5px 11px}
 .cmd{font-family:var(--mono);font-size:12.5px;display:block;max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cmd-kind{display:block;font-size:11px;color:var(--muted);margin-top:2px}
@@ -495,12 +498,14 @@ function renderKpis(s){
  ].join('');
 }
 function renderRuns(runs){
- $('#runs').innerHTML=runs.slice(0,10).map(r=>{
+ const shown=runs.slice(0,10),max=Math.max(1,...shown.map(r=>r.charsBefore||0));
+ $('#runs').innerHTML=shown.map(r=>{
   const failed=r.status==='failed'||r.status==='too_short'||!r.charsBefore,skipped=r.status==='skipped';
-  const cut=failed||skipped?'':'<i style="width:'+Math.max(0,Math.min(100,r.reductionRatio*100))+'%"></i>';
-  const text=failed?'—':skipped?'<b>'+f(r.charsBefore)+'</b> · sem corte':'<b>'+f(r.charsBefore)+'</b> → <b>'+f(r.charsAfter)+'</b>';
+  const width=failed?0:r.charsBefore/max*100,kept=skipped?100:Math.max(0,Math.min(100,r.charsAfter/r.charsBefore*100));
+  const bar='<div class="ba2-track ba5-track">'+(failed?'':'<i class="before" style="width:'+width+'%">'+(skipped?'':'<i class="after" style="width:'+kept+'%"></i>')+'</i>')+'</div>';
+  const text=failed?'<span class="cut-text wide">—</span>':skipped?'<span class="cut-text num wide"><b>'+f(r.charsBefore)+'</b> · sem corte</span>':'<span class="cut-text num"><b>'+f(r.charsBefore)+'</b> → <b>'+f(r.charsAfter)+'</b></span><span class="num ba2-cut">−'+Math.round(r.reductionRatio*100)+'%</span>';
   const sent=r.status==='restored'?f(r.injectedPayloadChars):r.status==='nothing_missing'?'0':'—';
-  return '<tr><td class="num">'+stamp(r.at)+'</td><td>'+statusPill(r)+'</td><td><div class="cut"><div class="mini"'+(cut?' title="'+pct(r.reductionRatio)+' do texto cortado"':'')+'>'+cut+'</div><span class="cut-text num">'+text+'</span></div></td><td class="num right">'+sent+'</td></tr>';
+  return '<tr><td class="num">'+stamp(r.at)+'</td><td>'+statusPill(r)+'</td><td><div class="ba5">'+bar+text+'</div></td><td class="num right">'+sent+'</td></tr>';
  }).join('')||'<tr><td colspan="4" class="empty">Nenhuma compactação registrada ainda.</td></tr>';
 }
 let decisions=[],decisionFilter='all';

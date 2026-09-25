@@ -149,6 +149,38 @@ table.decisions td{vertical-align:middle}
 @media (max-width:1000px){.settings{grid-template-columns:1fr}.effect{position:static}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:760px){.shell{padding-inline:16px}.setting{grid-template-columns:1fr}.setting .control{grid-column:1;grid-row:auto;justify-self:start}.group{padding-inline:16px}}
 .cut{display:flex;align-items:center;gap:12px}.cut-text{font-size:12px;color:var(--muted);white-space:nowrap}.cut-text b{color:var(--text);font-weight:600}
+
+.ba-picker{position:sticky;top:10px;z-index:5;justify-self:end;display:flex;align-items:center;gap:4px;margin-bottom:-12px;font-size:13px;font-weight:600;color:var(--amber);background:var(--amber-soft);border:1px solid color-mix(in srgb,var(--amber) 35%,transparent);border-radius:6px;padding:2px 4px}
+.ba-picker button{all:unset;cursor:pointer;font-size:14px;padding:3px 7px;border-radius:5px}.ba-picker button:hover{background:var(--raised);color:var(--text)}
+.variant{display:grid;gap:22px}
+.ba-card{display:grid;gap:14px}.ba-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.ba-key{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}.ba-key .ba-sw:not(:first-child){margin-left:10px}
+.ba-key.inline{display:inline-flex;margin-left:10px;font-size:11px}
+.ba-sw{display:inline-block;width:10px;height:10px;border-radius:3px}.ba-sw.before{background:var(--before)}.ba-sw.after{background:var(--accent)}.ba-sw.gone{background:var(--gone)}
+:root{--before:color-mix(in srgb,var(--muted) 45%,var(--surface));--gone:repeating-linear-gradient(135deg,color-mix(in srgb,var(--muted) 45%,transparent) 0 3px,transparent 3px 6px)}
+.ba1-row{display:grid;grid-template-columns:48px minmax(0,1fr) 70px;gap:12px;align-items:center}
+.ba1-bars{display:grid;gap:5px}.ba1-bars i{display:block;height:10px;border-radius:4px}.ba1-bars .before{background:var(--before)}.ba1-bars .after{background:var(--accent)}
+.ba1-nums{display:grid;gap:2px;text-align:right;font-size:12px}.ba1-nums span:last-child{color:var(--accent)}
+.ba2-row{display:grid;grid-template-columns:48px minmax(0,1fr) 150px 44px;gap:12px;align-items:center}
+.ba2-track{height:10px;border-radius:4px;overflow:hidden}.ba2-track>.before{display:block;height:100%;background:var(--before);border-radius:4px;overflow:hidden}.ba2-track .after{display:block;height:100%;background:var(--accent)}
+.ba2-text{font-size:12px;color:var(--muted);text-align:right}.ba2-text b{color:var(--text);font-weight:600}.ba2-cut{font-size:12px;color:var(--accent);text-align:right}
+.ba3{display:flex;justify-content:space-around;align-items:flex-end;gap:12px;padding-top:6px}
+.ba3-col{display:grid;justify-items:center;gap:4px;font-size:12px}.ba3-pair{display:flex;align-items:flex-end;gap:4px;height:150px}
+.ba3-pair i{display:block;width:26px;border-radius:4px 4px 0 0}.ba3-pair .before{background:var(--before)}.ba3-pair .after{background:var(--accent)}.ba3-cut{color:var(--accent)}
+.ba4{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:12px;align-items:stretch}
+.ba4-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.ba4 .ba2-row{grid-template-columns:44px minmax(0,1fr) 44px}.ba4 .ba2-text{display:none}
+.ba5{display:grid;grid-template-columns:180px 118px 40px;gap:12px;align-items:center}.ba5-track{width:180px;background:transparent}.ba5 .cut-text{text-align:left}.ba5 .cut-text.wide{grid-column:span 2}
+.ba6-kpis{grid-template-columns:1fr 1fr 1fr 1.9fr}.ba6-chart{display:grid;gap:5px;margin:4px 0 2px}
+.ba6-row{display:grid;grid-template-columns:34px minmax(0,1fr) 88px 34px;gap:8px;align-items:center;font-size:11px}.ba6-row .ba2-track{height:6px}.ba6-nums{color:var(--muted);text-align:right}
+.ba6 .hint .ba-sw{width:8px;height:8px;vertical-align:0}
+.ba7-title{display:flex;align-items:center;gap:14px;flex-wrap:wrap}.ba7-tabs button{font-size:12px;padding:4px 10px}.ba7-all{display:grid;gap:10px;margin-top:18px}.ba7-sub{display:flex;justify-content:flex-end}
+.ba8{width:100%;height:190px;overflow:visible}.ba8 polyline{fill:none;stroke-width:2.5;vector-effect:non-scaling-stroke}.ba8 polyline.before{stroke:var(--before)}.ba8 polyline.after{stroke:var(--accent)}
+.ba8 .gap{fill:color-mix(in srgb,var(--accent) 10%,transparent)}.ba8 circle.before{fill:var(--before)}.ba8 circle.after{fill:var(--accent)}
+.ba8 text{font:11px var(--mono);fill:var(--muted);text-anchor:middle}.ba8 text.time{font-family:var(--sans)}
+.ba9-row{display:grid;grid-template-columns:48px minmax(0,1fr) 150px 44px;gap:12px;align-items:center;height:26px}
+.ba9-axis{position:relative;height:12px;border-radius:6px;background:var(--raised)}.ba9-line{position:absolute;top:5px;height:2px;background:var(--before)}
+.ba9-dot{position:absolute;top:1px;width:10px;height:10px;border-radius:50%;transform:translateX(-50%)}.ba9-dot.before{background:var(--before);box-shadow:0 0 0 2px var(--surface)}.ba9-dot.after{background:var(--accent);box-shadow:0 0 0 2px var(--surface)}
+.ba10-track{height:10px}.ba10-bar{display:flex;height:100%;border-radius:4px;overflow:hidden}.ba10-bar .after{background:var(--accent)}.ba10-bar .gone{background:var(--gone);display:flex;align-items:center;justify-content:center;min-width:0}
 </style>
 
 <div class="shell">
@@ -181,11 +213,11 @@ table.decisions td{vertical-align:middle}
     <div class="table" style="margin-top:12px"><table>
      <thead><tr><th>Quando</th><th>Resultado</th><th>Texto antes → depois do corte</th><th style="text-align:right">Enviado ao Codex</th></tr></thead>
      <tbody>
-      <tr><td class="num">24/09 20:48</td><td><span class="pill ok">Enviado ao Codex</span></td><td><div class="cut"><div class="mini"><i style="width:71%"></i></div><span class="cut-text num"><b>96.410</b> → <b>27.880</b></span></div></td><td class="num" style="text-align:right">21.400</td></tr>
-      <tr><td class="num">24/09 18:12</td><td><span class="pill ok">Enviado ao Codex</span></td><td><div class="cut"><div class="mini"><i style="width:61%"></i></div><span class="cut-text num"><b>80.990</b> → <b>31.620</b></span></div></td><td class="num" style="text-align:right">19.870</td></tr>
-      <tr><td class="num">24/09 17:20</td><td><span class="pill skip">Não enviado: resumo já completo</span></td><td><div class="cut"><div class="mini"><i style="width:48%"></i></div><span class="cut-text num"><b>58.700</b> → <b>30.520</b></span></div></td><td class="num" style="text-align:right">0</td></tr>
-      <tr><td class="num">24/09 16:05</td><td><span class="pill skip">Não enviado: pouco a cortar</span></td><td><div class="cut"><div class="mini"><i style="width:9%"></i></div><span class="cut-text num"><b>40.200</b> · sem corte</span></div></td><td class="num" style="text-align:right">—</td></tr>
-      <tr><td class="num">24/09 15:37</td><td><span class="pill fail">Não enviado: erro</span></td><td><div class="cut"><div class="mini"></div><span class="cut-text">—</span></div></td><td class="num" style="text-align:right">—</td></tr>
+      <tr><td class="num">24/09 20:48</td><td><span class="pill ok">Enviado ao Codex</span></td><td><div class="ba5"><div class="ba2-track ba5-track"><i class="before" style="width:100.0%"><i class="after" style="width:28.9%"></i></i></div><span class="cut-text num"><b>96.410</b> → <b>27.880</b></span><span class="num ba2-cut">−71%</span></div></td><td class="num" style="text-align:right">21.400</td></tr>
+      <tr><td class="num">24/09 18:12</td><td><span class="pill ok">Enviado ao Codex</span></td><td><div class="ba5"><div class="ba2-track ba5-track"><i class="before" style="width:84.0%"><i class="after" style="width:39.0%"></i></i></div><span class="cut-text num"><b>80.990</b> → <b>31.620</b></span><span class="num ba2-cut">−61%</span></div></td><td class="num" style="text-align:right">19.870</td></tr>
+      <tr><td class="num">24/09 17:20</td><td><span class="pill skip">Não enviado: resumo já completo</span></td><td><div class="ba5"><div class="ba2-track ba5-track"><i class="before" style="width:60.9%"><i class="after" style="width:52.0%"></i></i></div><span class="cut-text num"><b>58.700</b> → <b>30.520</b></span><span class="num ba2-cut">−48%</span></div></td><td class="num" style="text-align:right">0</td></tr>
+      <tr><td class="num">24/09 16:05</td><td><span class="pill skip">Não enviado: pouco a cortar</span></td><td><div class="ba5"><div class="ba2-track ba5-track"><i class="before" style="width:41.7%"></i></div><span class="cut-text num wide"><b>40.200</b> · sem corte</span></div></td><td class="num" style="text-align:right">—</td></tr>
+      <tr><td class="num">24/09 15:37</td><td><span class="pill fail">Não enviado: erro</span></td><td><div class="ba5"><div class="ba2-track ba5-track"></div><span class="cut-text wide">—</span></div></td><td class="num" style="text-align:right">—</td></tr>
      </tbody></table></div>
    </div>
 
