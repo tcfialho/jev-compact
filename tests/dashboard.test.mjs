@@ -88,3 +88,15 @@ test('dashboard cache invalidates when persisted settings change without new his
     await new Promise((resolve) => server.close(resolve));
   }
 });
+
+test('runs with nothing to send or a too-short conversation get their own status', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jev-dashboard-status-'));
+  const env = { JEVCOMP_DATA_DIR: root };
+  const runId = '2026-09-25T10:00:00.000Z';
+  await appendHistory({ at: runId, runId, sessionId: 'n1', phase: 'precompact', status: 'prepared', stats: compactStats, decisions }, env);
+  await appendHistory({ at: '2026-09-25T10:00:05.000Z', runId, sessionId: 'n1', phase: 'restore', status: 'restored', stats: compactStats, injectedPayloadChars: 0, injectedChars: 0 }, env);
+  await appendHistory({ at: '2026-09-25T10:01:00.000Z', runId: 'short', sessionId: 'n2', phase: 'precompact', status: 'skipped', detail: 'transcript has fewer than 2 messages' }, env);
+  await appendHistory({ at: '2026-09-25T10:02:00.000Z', runId: 'small', sessionId: 'n3', phase: 'precompact', status: 'skipped', stats: compactStats, detail: 'reduction below 0.15' }, env);
+  const statuses = Object.fromEntries((await stats(env)).runs.map((run) => [run.sessionId, run.status]));
+  assert.deepEqual(statuses, { n1: 'nothing_missing', n2: 'too_short', n3: 'skipped' });
+});

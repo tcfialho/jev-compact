@@ -22,7 +22,7 @@ interface RunSummary {
   trigger?: string;
   model?: string;
   provider?: string;
-  status: 'prepared' | 'ready' | 'restored' | 'skipped' | 'failed' | 'restore_failed';
+  status: 'prepared' | 'ready' | 'restored' | 'nothing_missing' | 'skipped' | 'too_short' | 'failed' | 'restore_failed';
   reductionRatio: number;
   charsBefore: number;
   charsAfter: number;
@@ -156,8 +156,8 @@ export async function stats(env = process.env) {
       model: row.model,
       provider: row.provider,
       status: row.status === 'prepared'
-        ? restore ? 'restored' : restoreFailure ? 'restore_failed' : readyRow ? 'ready' : 'prepared'
-        : row.status as RunSummary['status'],
+        ? restore ? (positive(restore.injectedPayloadChars) > 0 ? 'restored' : 'nothing_missing') : restoreFailure ? 'restore_failed' : readyRow ? 'ready' : 'prepared'
+        : row.status === 'skipped' && !row.stats ? 'too_short' : row.status as RunSummary['status'],
       reductionRatio: ratio(Math.max(0, before - after), before),
       charsBefore: before,
       charsAfter: after,
@@ -366,8 +366,8 @@ const when=s=>{const d=new Date(s);return Number.isNaN(d.getTime())?'—':d.toLo
 const time=s=>{const d=new Date(s);return Number.isNaN(d.getTime())?'—':d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})};
 const metric=(label,number,detail)=>'<div class="metric"><span class="metric-label">'+label+'</span><strong class="metric-number">'+number+'</strong><span class="metric-detail">'+detail+'</span></div>';
 const actionTag=d=>d.pinned?'<span class="tag protected">Recente, não cortado</span>':d.action==='drop_call'?'<span class="tag neutral">Descartado</span>':d.action==='truncate_result'?'<span class="tag pending">Guardado encurtado</span>':'<span class="tag success">Guardado inteiro</span>';
- const statusTag=status=>status==='restored'?'<span class="tag success">Enviado ao Codex</span>':status==='failed'?'<span class="tag fallback">Codex compactou sem o jevcomp</span>':status==='restore_failed'?'<span class="tag fallback">Falha ao enviar</span>':status==='skipped'?'<span class="tag neutral">Não enviado: corte pequeno</span>':status==='ready'?'<span class="tag pending">Aguardando envio</span>':'<span class="tag pending">Aguardando a compactação</span>';
- const textAdditional=r=>r.status==='restored'?chars(r.injectedPayloadChars):r.status==='prepared'||r.status==='ready'?'Aguardando':'Não enviado';
+ const statusTag=status=>status==='restored'?'<span class="tag success">Enviado ao Codex</span>':status==='nothing_missing'?'<span class="tag neutral">Nada a enviar: o resumo já tinha tudo</span>':status==='too_short'?'<span class="tag neutral">Não enviado: conversa curta</span>':status==='failed'?'<span class="tag fallback">Codex compactou sem o jevcomp</span>':status==='restore_failed'?'<span class="tag fallback">Falha ao enviar</span>':status==='skipped'?'<span class="tag neutral">Não enviado: corte pequeno</span>':status==='ready'?'<span class="tag pending">Aguardando envio</span>':'<span class="tag pending">Aguardando a compactação</span>';
+ const textAdditional=r=>r.status==='restored'?chars(r.injectedPayloadChars):r.status==='nothing_missing'?'0 caracteres':r.status==='prepared'||r.status==='ready'?'Aguardando':'Não enviado';
 function renderChart(runs){
  const completed=runs.filter(r=>r.status==='restored'&&r.charsBefore>0).slice(0,8);
  if(!completed.length)return '<div class="empty">Ainda não houve compactação com envio ao Codex.</div>';

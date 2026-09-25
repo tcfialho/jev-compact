@@ -15,7 +15,7 @@ interface RunSummary {
     trigger?: string;
     model?: string;
     provider?: string;
-    status: 'prepared' | 'ready' | 'restored' | 'skipped' | 'failed' | 'restore_failed';
+    status: 'prepared' | 'ready' | 'restored' | 'nothing_missing' | 'skipped' | 'too_short' | 'failed' | 'restore_failed';
     reductionRatio: number;
     charsBefore: number;
     charsAfter: number;
