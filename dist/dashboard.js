@@ -298,7 +298,7 @@ td{padding:11px 10px;border-top:1px solid var(--line);vertical-align:middle}
 .cmd{font-family:var(--mono);font-size:12.5px;display:block;max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cmd-kind{display:block;font-size:11px;color:var(--muted);margin-top:2px}
 .right{text-align:right}
 .risk{display:flex;align-items:center;gap:8px}.risk-bar{width:70px;height:6px;border-radius:3px;background:var(--raised);overflow:hidden}.risk-bar i{display:block;height:100%;background:var(--steel)}
-.pill{display:inline-block;font-size:12px;font-weight:600;border-radius:999px;padding:2px 9px;white-space:nowrap}.pill[title]{cursor:help}
+.pill{display:inline-block;font-size:12px;font-weight:600;border:1px solid color-mix(in srgb,currentColor 35%,transparent);border-radius:5px;padding:1px 7px;white-space:nowrap}.pill[title]{cursor:help}
 .pill.ok{color:var(--accent);background:var(--accent-soft)}.pill.skip{color:var(--steel);background:var(--steel-soft)}.pill.fail{color:var(--coral);background:var(--coral-soft)}
 .pill.wait{color:var(--amber);background:var(--amber-soft)}
 .pill.short{color:var(--short);background:color-mix(in srgb,var(--short) 20%,transparent)}
