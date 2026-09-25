@@ -295,9 +295,9 @@ td{padding:11px 10px;border-top:1px solid var(--line);vertical-align:middle}
 .mini{display:flex;height:6px;width:140px;border-radius:3px;overflow:hidden;background:var(--raised)}
 .mini i{display:block;background:var(--accent)}
 .cut-text{font-size:12px;color:var(--muted);white-space:nowrap}.cut-text b{color:var(--text);font-weight:600}
-.ba2-track{height:10px;border-radius:4px;overflow:hidden}.ba2-track>.before{display:block;height:100%;background:color-mix(in srgb,var(--muted) 45%,var(--surface));border-radius:4px;overflow:hidden}.ba2-track .after{display:block;height:100%;background:var(--accent)}
-.ba2-cut{font-size:12px;color:var(--accent);text-align:right}
-.ba5{display:grid;grid-template-columns:180px 118px 40px;gap:12px;align-items:center}.ba5-track{width:180px}.ba5 .cut-text{text-align:left}.ba5 .cut-text.wide{grid-column:span 2}
+table.rb th,table.rb td{white-space:nowrap}table.rb .rb-grow{width:100%}
+.rb-bar{height:10px;min-width:160px}.rb-bar .before{display:block;height:100%;background:color-mix(in srgb,var(--muted) 45%,var(--surface));border-radius:4px;overflow:hidden}.rb-bar .after{display:block;height:100%;background:var(--accent)}
+.rb-cut{font-size:12px;color:var(--accent)}
 .decisions-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
 .filters button{font-size:12px;padding:5px 11px}
 .cmd{font-family:var(--mono);font-size:12.5px;display:block;max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cmd-kind{display:block;font-size:11px;color:var(--muted);margin-top:2px}
@@ -346,7 +346,7 @@ td{padding:11px 10px;border-top:1px solid var(--line);vertical-align:middle}
   <section class="view" id="view-geral" role="tabpanel" aria-labelledby="nav-geral">
    <div class="card"><div class="tape-head"><h2 id="last-title">Última compactação</h2><div class="chips" id="last-legend"></div></div><div id="last-run"></div></div>
    <div class="kpis" id="kpis"></div>
-   <div class="card"><h2>Compactações recentes</h2><div class="table" style="margin-top:12px"><table><thead><tr><th>Quando</th><th>Resultado</th><th>Texto antes → depois do corte</th></tr></thead><tbody id="runs"></tbody></table></div></div>
+   <div class="card"><h2>Compactações recentes</h2><div class="table" style="margin-top:12px"><table class="rb"><thead><tr><th>Quando</th><th>Resultado</th><th class="rb-grow">Texto antes → depois do corte</th><th class="right">Antes</th><th class="right">Depois</th><th class="right">Redução</th></tr></thead><tbody id="runs"></tbody></table></div></div>
    <div class="card">
     <div class="decisions-head"><div><h2>Decisões recentes</h2><p class="small muted" style="margin-top:4px">O que o Jev fez com cada comando e leitura de arquivo, da mais nova para a mais antiga.</p></div>
      <div class="seg filters" role="group" aria-label="Filtrar decisões"><button type="button" data-filter="all" aria-pressed="true">Todas</button><button type="button" data-filter="k" aria-pressed="false">Inteiros</button><button type="button" data-filter="s" aria-pressed="false">Resumidos</button><button type="button" data-filter="r" aria-pressed="false">Removidos</button></div></div>
@@ -443,11 +443,12 @@ function renderRuns(runs){
  const shown=runs.slice(0,10),max=Math.max(1,...shown.map(r=>r.charsBefore||0));
  $('#runs').innerHTML=shown.map(r=>{
   const failed=r.status==='failed'||r.status==='too_short'||!r.charsBefore,skipped=r.status==='skipped';
-  const width=failed?0:r.charsBefore/max*100,kept=skipped?100:Math.max(0,Math.min(100,r.charsAfter/r.charsBefore*100));
-  const bar='<div class="ba2-track ba5-track">'+(failed?'':'<i class="before" style="width:'+width+'%">'+(skipped?'':'<i class="after" style="width:'+kept+'%"></i>')+'</i>')+'</div>';
-  const text=failed?'<span class="cut-text wide">—</span>':skipped?'<span class="cut-text num wide"><b>'+f(r.charsBefore)+'</b> · sem corte</span>':'<span class="cut-text num"><b>'+f(r.charsBefore)+'</b> → <b>'+f(r.charsAfter)+'</b></span><span class="num ba2-cut">−'+Math.round(r.reductionRatio*100)+'%</span>';
-  return '<tr><td class="num">'+stamp(r.at)+'</td><td>'+statusPill(r)+'</td><td><div class="ba5">'+bar+text+'</div></td></tr>';
- }).join('')||'<tr><td colspan="3" class="empty">Nenhuma compactação registrada ainda.</td></tr>';
+  const kept=skipped?'':'<i class="after" style="width:'+Math.max(0,Math.min(100,r.charsAfter/r.charsBefore*100))+'%"></i>';
+  const bar='<div class="rb-bar">'+(failed?'':'<i class="before" style="width:'+(r.charsBefore/max*100)+'%">'+kept+'</i>')+'</div>';
+  const after=failed?'—':skipped?'<span class="muted">sem corte</span>':f(r.charsAfter);
+  const reduction=failed||skipped?'':'−'+Math.round(r.reductionRatio*100)+'%';
+  return '<tr><td class="num">'+stamp(r.at)+'</td><td>'+statusPill(r)+'</td><td class="rb-grow">'+bar+'</td><td class="num right">'+(failed?'—':f(r.charsBefore))+'</td><td class="num right">'+after+'</td><td class="num rb-cut right">'+reduction+'</td></tr>';
+ }).join('')||'<tr><td colspan="6" class="empty">Nenhuma compactação registrada ainda.</td></tr>';
 }
 let decisions=[],decisionFilter='all';
 function riskCell(d){

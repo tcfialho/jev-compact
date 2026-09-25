@@ -181,6 +181,14 @@ table.decisions td{vertical-align:middle}
 .ba9-axis{position:relative;height:12px;border-radius:6px;background:var(--raised)}.ba9-line{position:absolute;top:5px;height:2px;background:var(--before)}
 .ba9-dot{position:absolute;top:1px;width:10px;height:10px;border-radius:50%;transform:translateX(-50%)}.ba9-dot.before{background:var(--before);box-shadow:0 0 0 2px var(--surface)}.ba9-dot.after{background:var(--accent);box-shadow:0 0 0 2px var(--surface)}
 .ba10-track{height:10px}.ba10-bar{display:flex;height:100%;border-radius:4px;overflow:hidden}.ba10-bar .after{background:var(--accent)}.ba10-bar .gone{background:var(--gone);display:flex;align-items:center;justify-content:center;min-width:0}
+
+.rb-picker{position:sticky;top:10px;z-index:5;justify-self:end;display:flex;align-items:center;gap:4px;margin-bottom:-12px;font-size:13px;font-weight:600;color:var(--amber);background:var(--amber-soft);border:1px solid color-mix(in srgb,var(--amber) 35%,transparent);border-radius:6px;padding:2px 4px}
+.rb-picker button{all:unset;cursor:pointer;font-size:14px;padding:3px 7px;border-radius:5px}.rb-picker button:hover{background:var(--raised);color:var(--text)}
+.rb-variant{display:contents}
+table.rb th,table.rb td{white-space:nowrap}table.rb .rb-grow{width:100%}
+.rb-bar{height:10px;min-width:160px}.rb-bar.thin{height:8px}.rb-bar .before{display:block;height:100%;background:color-mix(in srgb,var(--muted) 45%,var(--surface));border-radius:4px;overflow:hidden}.rb-bar .after{display:block;height:100%;background:var(--accent)}
+.rb-text{font-size:12px;color:var(--muted)}.rb-text b,table.rb td.num b{color:var(--text);font-weight:600}.rb-cut{font-size:12px;color:var(--accent)}
+.rb-stack{display:grid;gap:6px}.rb-line{display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}.rb-line b{color:var(--text);font-weight:600}
 </style>
 
 <div class="shell">
@@ -209,15 +217,15 @@ table.decisions td{vertical-align:middle}
    </div>
 
    <div class="card">
-    <h2>Compactações recentes</h2>
-    <div class="table" style="margin-top:12px"><table>
-     <thead><tr><th>Quando</th><th>Resultado</th><th>Texto antes → depois do corte</th></tr></thead>
+    <div class="rb-head"><h2>Compactações recentes</h2></div>
+    <div class="table" style="margin-top:12px"><table class="rb">
+     <thead><tr><th>Quando</th><th>Resultado</th><th class="rb-grow">Texto antes → depois do corte</th><th class="right">Antes</th><th class="right">Depois</th><th class="right">Redução</th></tr></thead>
      <tbody>
-      <tr><td class="num">24/09 20:48</td><td><span class="pill ok">Enviado ao Codex</span></td><td><div class="ba5"><div class="ba2-track ba5-track"><i class="before" style="width:100.0%"><i class="after" style="width:28.9%"></i></i></div><span class="cut-text num"><b>96.410</b> → <b>27.880</b></span><span class="num ba2-cut">−71%</span></div></td></tr>
-      <tr><td class="num">24/09 18:12</td><td><span class="pill ok">Enviado ao Codex</span></td><td><div class="ba5"><div class="ba2-track ba5-track"><i class="before" style="width:84.0%"><i class="after" style="width:39.0%"></i></i></div><span class="cut-text num"><b>80.990</b> → <b>31.620</b></span><span class="num ba2-cut">−61%</span></div></td></tr>
-      <tr><td class="num">24/09 17:20</td><td><span class="pill skip">Não enviado: resumo já completo</span></td><td><div class="ba5"><div class="ba2-track ba5-track"><i class="before" style="width:60.9%"><i class="after" style="width:52.0%"></i></i></div><span class="cut-text num"><b>58.700</b> → <b>30.520</b></span><span class="num ba2-cut">−48%</span></div></td></tr>
-      <tr><td class="num">24/09 16:05</td><td><span class="pill skip">Não enviado: pouco a cortar</span></td><td><div class="ba5"><div class="ba2-track ba5-track"><i class="before" style="width:41.7%"></i></div><span class="cut-text num wide"><b>40.200</b> · sem corte</span></div></td></tr>
-      <tr><td class="num">24/09 15:37</td><td><span class="pill fail">Não enviado: erro</span></td><td><div class="ba5"><div class="ba2-track ba5-track"></div><span class="cut-text wide">—</span></div></td></tr>
+      <tr><td class="num">24/09 20:48</td><td><span class="pill ok">Enviado ao Codex</span></td><td class="rb-grow"><div class="rb-bar"><i class="before" style="width:100.0%"><i class="after" style="width:28.9%"></i></i></div></td><td class="num right">96.410</td><td class="num right">27.880</td><td class="num rb-cut right">−71%</td></tr>
+      <tr><td class="num">24/09 18:12</td><td><span class="pill ok">Enviado ao Codex</span></td><td class="rb-grow"><div class="rb-bar"><i class="before" style="width:84.0%"><i class="after" style="width:39.0%"></i></i></div></td><td class="num right">80.990</td><td class="num right">31.620</td><td class="num rb-cut right">−61%</td></tr>
+      <tr><td class="num">24/09 17:20</td><td><span class="pill skip">Não enviado: resumo já completo</span></td><td class="rb-grow"><div class="rb-bar"><i class="before" style="width:60.9%"><i class="after" style="width:52.0%"></i></i></div></td><td class="num right">58.700</td><td class="num right">30.520</td><td class="num rb-cut right">−48%</td></tr>
+      <tr><td class="num">24/09 16:05</td><td><span class="pill skip">Não enviado: pouco a cortar</span></td><td class="rb-grow"><div class="rb-bar"><i class="before" style="width:41.7%"></i></div></td><td class="num right">40.200</td><td class="num right"><span class="muted">sem corte</span></td><td class="num rb-cut right"></td></tr>
+      <tr><td class="num">24/09 15:37</td><td><span class="pill fail">Não enviado: erro</span></td><td class="rb-grow"><div class="rb-bar"></div></td><td class="num right">—</td><td class="num right">—</td><td class="num rb-cut right"></td></tr>
      </tbody></table></div>
    </div>
 
