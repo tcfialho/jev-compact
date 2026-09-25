@@ -1,5 +1,7 @@
 import { stat } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
+import { applySettingsChange, settingsSnapshot } from './dashboard-settings.js';
 import { readableHistoryPaths, readHistory, type HistoryRow } from './store.js';
 import { settingsPath, userSettings } from './settings.js';
 
@@ -223,9 +225,10 @@ export async function stats(env = process.env) {
   };
 }
 
-function page(): string {
+function page(token: string): string {
   return `<!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="jevcomp-token" content="${token}">
 <title>jevcomp · dashboard</title>
 <style>
 :root{color-scheme:dark;--bg:#151514;--panel:#20201f;--panel2:#252524;--line:#393936;--text:#f3f3f1;--muted:#a2a29e;--green:#5bc66b;--bar:#73816e;--orange:#ee7847;--amber:#e2ac42;--blue:#8cacfa}
@@ -276,9 +279,41 @@ th{font-size:10px;color:var(--muted);font-weight:600}tr:last-child td{border-bot
 footer{color:var(--muted);font-size:11px;margin-top:18px}
 @media(max-width:850px){.hero,.pair{grid-template-columns:1fr}.reduction-number{margin:30px 0}.detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:540px){main{padding:18px 12px 42px}.top{align-items:flex-start}.top-left{display:block}.hero-metrics{grid-template-rows:auto}.flow{grid-template-columns:1fr}.arrow{display:none}.detail-grid{grid-template-columns:1fr 1fr}table{min-width:660px}}
+h3{margin:0;font-size:13px;font-weight:650}.small{font-size:11px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:18px}
+.tab{background:none;border:0;border-bottom:2px solid transparent;color:var(--muted);font:inherit;font-weight:600;padding:9px 12px;cursor:pointer;margin-bottom:-1px}
+.tab[aria-selected="true"]{color:var(--text);border-bottom-color:var(--green)}.tab:hover{color:var(--text)}
+.tab:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.settings{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:12px;align-items:start}
+.settings-side{display:grid;gap:12px}
+.row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 18px;align-items:center;padding:14px 0;border-bottom:1px solid var(--line)}
+.row p{grid-column:1;font-size:11px;color:var(--muted);line-height:1.45;max-width:62ch}
+.row .control{grid-column:2;grid-row:1/span 2;justify-self:end}
+.seg{display:inline-flex;flex-wrap:wrap;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:2px;gap:2px}
+.seg button{background:none;border:1px solid transparent;border-radius:6px;color:var(--muted);font:inherit;font-size:12px;font-weight:600;padding:5px 10px;cursor:pointer;white-space:nowrap;font-variant-numeric:tabular-nums}
+.seg button:hover{color:var(--text)}
+.seg button[aria-pressed="true"]{background:#1a3020;border-color:#316e3b;color:var(--green)}
+.seg button:disabled{cursor:not-allowed;opacity:.55}
+.locked{grid-column:1/-1;font-size:11px;color:var(--amber)}
+.kv{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:12px}
+.kv:last-child{border-bottom:0}.kv>span:first-child{color:var(--muted)}.kv b{text-align:right;overflow-wrap:anywhere}
+.btn{background:var(--panel2);border:1px solid var(--line);border-radius:7px;color:var(--text);font:inherit;font-size:12px;font-weight:600;padding:6px 11px;cursor:pointer}
+.btn:hover{border-color:#55554f}.btn.primary{background:#1a3020;border-color:#316e3b;color:var(--green)}
+.btn.danger{color:var(--orange);border-color:#81462f;background:#34241d}
+.key-edit{display:grid;gap:8px;margin-top:10px}
+.key-edit input{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:7px;color:var(--text);font:12px ui-monospace,"Cascadia Code",Consolas,monospace;padding:8px 10px}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center}
+.group-title{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.note{font-size:11px;color:var(--amber);margin-top:8px}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#1a3020;border:1px solid #316e3b;color:var(--green);border-radius:8px;padding:8px 14px;font-weight:650;font-size:12px}
+.toast.bad{background:#34241d;border-color:#81462f;color:var(--orange)}
+@media(max-width:850px){.settings{grid-template-columns:1fr}}
+@media(max-width:540px){.row{grid-template-columns:1fr}.row .control{grid-column:1;grid-row:auto;justify-self:start}}
 </style></head><body><main>
 <header class="top"><div class="top-left"><h1>jevcomp</h1><span class="top-note">compactação do Codex</span></div><span class="live" id="live">dados locais · atualização a cada 5s</span></header>
+<nav class="tabs" role="tablist" aria-label="Seções"><button class="tab" role="tab" id="tab-resumo" aria-selected="true" aria-controls="view-resumo">Resumo</button><button class="tab" role="tab" id="tab-config" aria-selected="false" aria-controls="view-config">Configurações</button></nav>
 <div id="error"></div>
+<div id="view-resumo" role="tabpanel" aria-labelledby="tab-resumo">
 <section class="hero" aria-label="Resumo do Jev">
  <div class="panel reduction-card"><div><h2>Quanto texto foi reduzido?</h2><p class="sub">Nas compactações em que o jevcomp enviou texto ao Codex.</p></div><strong class="reduction-number" id="reduction">—</strong><div class="reduction-foot"><div class="track"><i id="reduction-bar"></i></div><p><b id="removed">—</b><br><span class="muted">do texto lido nessas compactações</span></p></div></div>
  <div class="hero-metrics">
@@ -296,8 +331,33 @@ footer{color:var(--muted);font-size:11px;margin-top:18px}
 <section class="section"><div class="section-heading"><h2>Detalhes da integração</h2><p class="sub">Informações adicionais registradas pelos hooks locais.</p></div><div class="detail-grid" id="details"></div></section>
 <section class="section"><div class="section-heading"><h2>Compactações recentes</h2><p class="sub">O que aconteceu em cada compactação.</p></div><div class="panel table-panel"><table><thead><tr><th>Quando</th><th>Resultado</th><th>Texto enviado ao Codex</th></tr></thead><tbody id="runs"></tbody></table></div></section>
 <section class="section"><div class="section-heading"><h2>Decisões recentes</h2><p class="sub">Os dois percentuais de cada linha estimam o risco de perder informação útil ao remover ou resumir o resultado. Quanto maior o percentual, maior o risco.</p></div><div class="panel table-panel"><table><thead><tr><th>Ferramenta</th><th>Decisão</th><th>Entrada</th><th>Risco de remover / resumir</th><th class="num">Caracteres retirados</th></tr></thead><tbody id="decisions"></tbody></table></div></section>
+</div>
+<div id="view-config" role="tabpanel" aria-labelledby="tab-config" hidden>
+ <div class="settings">
+  <div class="settings-side">
+   <section class="panel" aria-labelledby="h-conexao">
+    <h2 id="h-conexao">Conexão</h2><p class="sub">Quem o jevcomp usa para decidir o que manter.</p>
+    <div class="seg" role="group" aria-label="Provedor" id="provider-seg" style="margin-top:14px"><button type="button" data-provider="openrouter" aria-pressed="false">OpenRouter</button><button type="button" data-provider="typesafe" aria-pressed="false">TypeSafe</button></div>
+    <div id="provider-note"></div>
+    <div style="margin-top:12px" id="connection"></div>
+    <div class="actions"><button class="btn" type="button" id="change-key">Trocar chave</button></div>
+    <form class="key-edit" id="key-form" hidden>
+     <label class="muted small" for="key-input" id="key-label">Nova chave</label>
+     <input id="key-input" type="password" autocomplete="off" spellcheck="false">
+     <div class="actions" style="margin-top:0"><button class="btn primary" type="submit">Salvar chave</button><button class="btn" type="button" id="cancel-key">Cancelar</button></div>
+    </form>
+   </section>
+   <section class="panel" aria-labelledby="h-codex"><h2 id="h-codex">Codex</h2><p class="sub">Como o jevcomp está ligado ao Codex.</p><div style="margin-top:12px" id="codex-info"></div></section>
+  </div>
+  <section class="panel" aria-labelledby="h-comport">
+   <div class="group-title"><h2 id="h-comport">Comportamento</h2><span class="muted small">Cada mudança é salva na hora e vale a partir da próxima compactação.</span></div>
+   <div id="behavior"></div>
+   <div class="actions" id="reset-area"></div>
+  </section>
+ </div>
+</div>
 <footer>Dados do histórico local do jevcomp. Caracteres retirados não representam economia de tokens cobrados pelo Codex. A dashboard escuta somente em 127.0.0.1.</footer>
-</main><script>
+</main><div class="toast" id="toast" role="status" hidden></div><script>
 const f=n=>Number(n||0).toLocaleString('pt-BR');
 const pct=n=>(Number(n||0)*100).toFixed(1)+'%';
 const chars=n=>f(n)+' caracteres';
@@ -355,7 +415,69 @@ function refresh(){
 function showError(error){document.querySelector('#error').innerHTML='<div class="error">Erro ao ler dados: '+esc(String(error))+'</div>'}
 refresh().catch(showError);
 setInterval(()=>refresh().catch(showError),5000);
+const token=document.querySelector('meta[name="jevcomp-token"]').content;
+const SETTING_TEXT={
+ 'restore-mode':{title:'Quanto texto enviar ao Codex',help:'Depois da compactação, o jevcomp envia ao Codex o que o resumo perdeu. Todo o texto: envia tudo, até o limite abaixo. Parte do texto: envia a lista e um trecho. Só a lista: envia apenas os nomes dos comandos e arquivos guardados e onde estão salvos no seu computador; o Codex abre o texto completo só se precisar.',label:v=>({preserve:'Todo o texto',balanced:'Parte do texto',minimal:'Só a lista'})[v]||v},
+ 'restore-max-chars':{title:'Limite de texto enviado ao Codex',help:'O máximo de texto que o jevcomp envia ao Codex depois de cada compactação, em caracteres. Mais alto mantém mais detalhes, mas ocupa mais espaço na conversa.',label:v=>Number(v)===0?'Sem limite':f(Number(v)/1000)+' mil'},
+ 'pin-recent-messages':{title:'Mensagens recentes que nunca são cortadas',help:'As mensagens mais novas ficam sempre inteiras. Mais alto é mais seguro; mais baixo deixa o jevcomp cortar mais.',label:v=>String(v)},
+ 'loss-threshold':{title:'Quanto cortar',help:'O Jev estima o risco de cortar algo que o Codex ainda vai usar. Pouco: só corta o que tem risco baixo. Muito: corta mais.',label:v=>({0.3:'Pouco',0.5:'Normal',0.7:'Muito'})[Number(v)]||String(v)},
+ 'min-reduction-ratio':{title:'Só agir se cortar pelo menos',help:'Se o corte diminuir o texto menos que isso, o jevcomp não faz nada naquela compactação.',label:v=>Math.round(Number(v)*100)+'%'}
+};
+const PROVIDER_NAME={openrouter:'OpenRouter',typesafe:'TypeSafe'};
+let settingsState=null,keyTarget=null,toastTimer;
+function toast(text,bad){const el=document.querySelector('#toast');el.textContent=text;el.className='toast'+(bad?' bad':'');el.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>{el.hidden=true},2200)}
+function ago(iso){if(!iso)return null;const m=Math.round((Date.now()-new Date(iso).getTime())/60000);if(m<1)return 'agora';if(m<60)return 'há '+m+' min';const h=Math.round(m/60);return h<24?'há '+h+' h':when(iso)}
+function keyText(k){if(k.source==='none')return 'Nenhuma chave';const end=k.ending?'••••'+k.ending:'••••';return k.source==='environment'?end+' · da variável '+k.variable:end+' · salva neste computador'}
+const kv=(label,value)=>'<div class="kv"><span>'+label+'</span><b>'+value+'</b></div>';
+const same=(a,b)=>String(a)===String(b)||(!Number.isNaN(Number(a))&&Number(a)===Number(b));
+function renderSettings(s){
+ settingsState=s;
+ document.querySelectorAll('#provider-seg button').forEach(b=>{b.setAttribute('aria-pressed',String(b.dataset.provider===s.provider));b.disabled=!!s.providerLockedBy});
+ document.querySelector('#provider-note').innerHTML=s.providerLockedBy?'<p class="note">Definido pela variável '+esc(s.providerLockedBy)+' no seu sistema.</p>':'';
+ const key=s.keys[s.provider];
+ const last=s.lastJev?(s.lastJev.ok?'Funcionou · '+when(s.lastJev.at):'Falhou · '+when(s.lastJev.at)):'Ainda nenhuma';
+ document.querySelector('#connection').innerHTML=kv('Chave '+PROVIDER_NAME[s.provider],esc(keyText(key)))+kv('Última chamada ao Jev',esc(last))+(key.source==='environment'?'<p class="note">A variável '+esc(key.variable)+' do seu sistema tem prioridade sobre uma chave salva aqui.</p>':'');
+ document.querySelector('#change-key').textContent=key.source==='none'?'Adicionar chave':'Trocar chave';
+ const latest=Object.values(s.hooks.activity||{}).sort().pop();
+ const hooksTag=s.hooks.installed>=s.hooks.total?'tag success':'tag fallback';
+ document.querySelector('#codex-info').innerHTML=kv('Instalação',(s.installation.kind==='plugin'?'Plugin do Codex':'Comando jevcomp')+' · '+esc(s.installation.version))
+  +kv('Hooks','<span class="'+hooksTag+'">'+s.hooks.installed+' de '+s.hooks.total+' instalados</span>')
+  +kv('Último sinal dos hooks',latest?esc(ago(latest)):'Ainda nenhum')
+  +kv('Dashboard',esc(s.dashboardUrl));
+ document.querySelector('#behavior').innerHTML=s.settings.map(item=>{
+  const text=SETTING_TEXT[item.name];
+  const choices=item.choices.some(c=>same(c,item.value))?item.choices:item.choices.concat([item.value]);
+  const buttons=choices.map(c=>'<button type="button" data-value="'+esc(c)+'" aria-pressed="'+same(c,item.value)+'"'+(item.lockedBy?' disabled':'')+'>'+esc(text.label(c))+'</button>').join('');
+  const locked=item.lockedBy?'<span class="locked">Definido pela variável '+esc(item.lockedBy)+' no seu sistema. Remova a variável para mudar aqui.</span>':'';
+  return '<div class="row"><h3>'+text.title+'</h3><p>'+text.help+'</p><div class="control seg" role="group" aria-label="'+text.title+'" data-name="'+item.name+'">'+buttons+'</div>'+locked+'</div>';
+ }).join('');
+}
+function loadSettings(){return fetch('/api/settings',{cache:'no-store'}).then(r=>r.json()).then(renderSettings).catch(e=>toast('Erro ao ler as configurações: '+e.message,true))}
+function send(body,message){return fetch('/api/settings',{method:'POST',headers:{'content-type':'application/json','x-jevcomp-token':token},body:JSON.stringify(body)}).then(r=>r.json().then(j=>{if(!r.ok)throw Error(j.error||'HTTP '+r.status);return j})).then(s=>{renderSettings(s);toast(message||'Salvo');return true}).catch(e=>{toast('Não salvo: '+e.message,true);return false})}
+function openKeyForm(provider){keyTarget=provider;document.querySelector('#key-label').textContent='Chave '+PROVIDER_NAME[provider];document.querySelector('#key-input').value='';document.querySelector('#key-form').hidden=false;document.querySelector('#key-input').focus()}
+document.querySelector('#provider-seg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b||b.disabled||!settingsState)return;const p=b.dataset.provider;if(p===settingsState.provider)return;if(settingsState.keys[p].source==='none'){openKeyForm(p);return}send({action:'provider',provider:p},'Agora usando '+PROVIDER_NAME[p])});
+document.querySelector('#change-key').addEventListener('click',()=>{if(settingsState)openKeyForm(settingsState.provider)});
+document.querySelector('#cancel-key').addEventListener('click',()=>{document.querySelector('#key-form').hidden=true});
+document.querySelector('#key-form').addEventListener('submit',e=>{e.preventDefault();const input=document.querySelector('#key-input');const key=input.value.trim();if(!key){toast('Cole a chave antes de salvar.',true);return}send({action:'key',provider:keyTarget,key},'Chave salva').then(ok=>{if(ok){document.querySelector('#key-form').hidden=true;input.value=''}})});
+document.querySelector('#behavior').addEventListener('click',e=>{const b=e.target.closest('button');if(!b||b.disabled)return;send({action:'setting',name:b.closest('.seg').dataset.name,value:b.dataset.value})});
+function showReset(){const area=document.querySelector('#reset-area');area.innerHTML='<button class="btn danger" type="button" id="reset">Restaurar padrões</button>';document.querySelector('#reset').addEventListener('click',()=>{area.innerHTML='<span class="muted">Voltar as opções acima ao padrão? Provedor e chave continuam como estão.</span><button class="btn danger" type="button" id="reset-yes">Restaurar</button><button class="btn" type="button" id="reset-no">Cancelar</button>';document.querySelector('#reset-yes').addEventListener('click',()=>send({action:'reset'},'Padrões restaurados').then(showReset));document.querySelector('#reset-no').addEventListener('click',showReset)})}
+showReset();
+function showTab(name){document.querySelectorAll('.tab').forEach(t=>{const on=t.id==='tab-'+name;t.setAttribute('aria-selected',String(on));document.getElementById(t.getAttribute('aria-controls')).hidden=!on});if(name==='config')loadSettings();history.replaceState(null,'',name==='config'?'#configuracoes':'#resumo')}
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>showTab(t.id.slice(4))));
+showTab(location.hash==='#configuracoes'?'config':'resumo');
+setInterval(()=>{if(!document.querySelector('#view-config').hidden&&document.querySelector('#key-form').hidden)loadSettings()},15000);
 </script></body></html>`;
+}
+
+async function jsonBody(req: any): Promise<Record<string, unknown>> {
+  let text = '';
+  for await (const chunk of req) {
+    text += chunk;
+    if (text.length > 16_384) throw new Error('request too large');
+  }
+  const value = JSON.parse(text || '{}');
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('request must be a JSON object');
+  return value;
 }
 
 function json(res: any, value: unknown, status = 200): void {
@@ -379,9 +501,24 @@ export async function startDashboard(port = 43127, env = process.env): Promise<{
     cachedIdentity = identity;
     return cachedStats;
   };
+  const token = randomUUID();
+  // Checking Host blocks DNS-rebinding pages; the token and Origin stop other sites from changing settings.
+  const trustedHost = (req: any): boolean => {
+    const listening = server.address()?.port;
+    return req.headers.host === `${host}:${listening}` || req.headers.host === `localhost:${listening}`;
+  };
   const server = createServer(async (req: any, res: any) => {
     try {
       const url = new URL(req.url ?? '/', `http://${host}`);
+      if (!trustedHost(req)) return json(res, { error: 'forbidden' }, 403);
+      if (url.pathname === '/api/settings' && req.method === 'POST') {
+        const origin = req.headers.origin;
+        if (req.headers['x-jevcomp-token'] !== token || (origin && origin !== `http://${req.headers.host}`)) return json(res, { error: 'forbidden' }, 403);
+        try { await applySettingsChange(await jsonBody(req), env); }
+        catch (error) { return json(res, { error: error instanceof Error ? error.message : String(error) }, 400); }
+        return json(res, await settingsSnapshot(env));
+      }
+      if (url.pathname === '/api/settings') return json(res, await settingsSnapshot(env));
       if (url.pathname === '/api/health') return json(res, {
         ok: true,
         service: 'jevcomp-dashboard',
@@ -393,7 +530,7 @@ export async function startDashboard(port = 43127, env = process.env): Promise<{
       if (url.pathname === '/api/history') return json(res, (await readHistory(env)).slice(-200).reverse());
       if (url.pathname !== '/') return json(res, { error: 'not found' }, 404);
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-      res.end(page());
+      res.end(page(token));
     } catch (error) {
       json(res, { error: error instanceof Error ? error.message : String(error) }, 500);
     }

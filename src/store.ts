@@ -241,3 +241,22 @@ export async function readHistory(env = process.env): Promise<HistoryRow[]> {
   }
   return [...rows.values()].sort((left, right) => left.at.localeCompare(right.at));
 }
+
+export type HookActivity = Partial<Record<'SessionStart' | 'UserPromptSubmit' | 'PreCompact' | 'PostCompact', string>>;
+
+export function hookActivityPath(env = process.env): string { return join(dataDir(env), 'hook-activity.json'); }
+
+export async function readHookActivity(env = process.env): Promise<HookActivity> {
+  try {
+    const value = JSON.parse(await readFile(hookActivityPath(env), 'utf8'));
+    return value && typeof value === 'object' && !Array.isArray(value) ? value as HookActivity : {};
+  } catch { return {}; }
+}
+
+/** Remembers when Codex last ran each hook, as proof the hooks are active. */
+export async function recordHookActivity(event: string, env = process.env): Promise<void> {
+  if (!['SessionStart', 'UserPromptSubmit', 'PreCompact', 'PostCompact'].includes(event)) return;
+  const activity = { ...await readHookActivity(env), [event]: new Date().toISOString() };
+  await ensurePrivateDir(dataDir(env));
+  await writeFile(hookActivityPath(env), JSON.stringify(activity), { mode: 0o600 });
+}

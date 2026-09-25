@@ -242,3 +242,21 @@ export async function readHistory(env = process.env) {
     }
     return [...rows.values()].sort((left, right) => left.at.localeCompare(right.at));
 }
+export function hookActivityPath(env = process.env) { return join(dataDir(env), 'hook-activity.json'); }
+export async function readHookActivity(env = process.env) {
+    try {
+        const value = JSON.parse(await readFile(hookActivityPath(env), 'utf8'));
+        return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    }
+    catch {
+        return {};
+    }
+}
+/** Remembers when Codex last ran each hook, as proof the hooks are active. */
+export async function recordHookActivity(event, env = process.env) {
+    if (!['SessionStart', 'UserPromptSubmit', 'PreCompact', 'PostCompact'].includes(event))
+        return;
+    const activity = { ...await readHookActivity(env), [event]: new Date().toISOString() };
+    await ensurePrivateDir(dataDir(env));
+    await writeFile(hookActivityPath(env), JSON.stringify(activity), { mode: 0o600 });
+}

@@ -10,7 +10,7 @@ import { providerConfig, resolveApiKey, resolveProvider, type JevProvider } from
 import { userSettings } from './settings.js';
 import { loadCodexRolloutSnapshot } from './rollout.js';
 import { capContext, renderIndex, renderMessages, renderMessagesForInjection } from './render.js';
-import { claimReady, discardPendingState, markReady, peekReady, prepareState, sweep, tryAppendHistory, type SessionState } from './store.js';
+import { claimReady, discardPendingState, markReady, peekReady, prepareState, recordHookActivity, sweep, tryAppendHistory, type SessionState } from './store.js';
 import type { CallDecision, Message } from './types.js';
 
 interface HookInput {
@@ -282,6 +282,7 @@ export interface HookOptions { startDashboard?: boolean }
 
 export async function handleHook(value: unknown, env: Record<string, string | undefined> = process.env, options: HookOptions = {}): Promise<Record<string, unknown>> {
   const input = parseInput(value);
+  if (options.startDashboard) await recordHookActivity(input.hook_event_name, env).catch(() => {});
   const migration = await migrateLegacyHooks(input, env);
   if (typeof migration === 'string') return { continue: true, systemMessage: migration };
   if (migration) return { continue: true, suppressOutput: true };

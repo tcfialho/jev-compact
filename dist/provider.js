@@ -59,6 +59,21 @@ function readKey(paths) {
     }
     return '';
 }
+/** Saves only the preferred provider, for switching to one whose key is already available. */
+export async function savePreferredProvider(provider, env = process.env) {
+    const dir = configDir(env);
+    await mkdir(dir, { recursive: true, mode: 0o700 });
+    await writeFile(providerPreferencePath(env), `${provider}\n`, { mode: 0o600 });
+}
+/** Says where the key for a provider comes from, showing only its last four characters. */
+export function keyStatus(provider, env = process.env) {
+    const variable = provider === 'openrouter' ? 'OPENROUTER_API_KEY' : 'TYPESAFE_API_KEY';
+    const ending = (key) => (key.length > 8 ? key.slice(-4) : undefined);
+    if (env[variable])
+        return { source: 'environment', variable, ending: ending(env[variable]) };
+    const key = resolveApiKey(provider, { env });
+    return key ? { source: 'saved', ending: ending(key) } : { source: 'none' };
+}
 export function hasSavedProviderKey(provider, env = process.env) {
     return savedProvider(env) === provider && !!readKey([defaultKeyPath(provider, env)]);
 }

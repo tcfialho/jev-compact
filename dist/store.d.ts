@@ -62,3 +62,8 @@ export declare function appendHistory(row: HistoryRow, env?: Record<string, stri
 /** History is observability only; hook correctness must never depend on this write succeeding. */
 export declare function tryAppendHistory(row: HistoryRow, env?: Record<string, string | undefined>): Promise<boolean>;
 export declare function readHistory(env?: Record<string, string | undefined>): Promise<HistoryRow[]>;
+export type HookActivity = Partial<Record<'SessionStart' | 'UserPromptSubmit' | 'PreCompact' | 'PostCompact', string>>;
+export declare function hookActivityPath(env?: Record<string, string | undefined>): string;
+export declare function readHookActivity(env?: Record<string, string | undefined>): Promise<HookActivity>;
+/** Remembers when Codex last ran each hook, as proof the hooks are active. */
+export declare function recordHookActivity(event: string, env?: Record<string, string | undefined>): Promise<void>;

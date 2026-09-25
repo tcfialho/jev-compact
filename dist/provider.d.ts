@@ -20,6 +20,15 @@ export declare function saveProviderConfiguration(provider: Exclude<JevProvider,
     keyFile: string;
     providerFile: string;
 }>;
+/** Saves only the preferred provider, for switching to one whose key is already available. */
+export declare function savePreferredProvider(provider: Exclude<JevProvider, 'auto'>, env?: Env): Promise<void>;
+export interface KeyStatus {
+    source: 'environment' | 'saved' | 'none';
+    variable?: string;
+    ending?: string;
+}
+/** Says where the key for a provider comes from, showing only its last four characters. */
+export declare function keyStatus(provider: Exclude<JevProvider, 'auto'>, env?: Env): KeyStatus;
 export declare function hasSavedProviderKey(provider: Exclude<JevProvider, 'auto'>, env?: Env): boolean;
 export declare function resolveApiKey(provider: Exclude<JevProvider, 'auto'>, options?: Pick<JevClientOptions, 'apiKey' | 'env'>): string;
 export declare function resolveProvider(options?: Pick<JevClientOptions, 'provider' | 'env' | 'apiKey'>): Exclude<JevProvider, 'auto'>;

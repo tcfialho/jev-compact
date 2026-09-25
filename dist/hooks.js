@@ -10,7 +10,7 @@ import { providerConfig, resolveApiKey, resolveProvider } from './provider.js';
 import { userSettings } from './settings.js';
 import { loadCodexRolloutSnapshot } from './rollout.js';
 import { capContext, renderIndex, renderMessages, renderMessagesForInjection } from './render.js';
-import { claimReady, discardPendingState, markReady, peekReady, prepareState, sweep, tryAppendHistory } from './store.js';
+import { claimReady, discardPendingState, markReady, peekReady, prepareState, recordHookActivity, sweep, tryAppendHistory } from './store.js';
 function num(env, key, fallback) {
     const raw = env[key];
     if (raw === undefined || raw.trim() === '')
@@ -251,6 +251,8 @@ async function dashboardNotice(env, options) {
 }
 export async function handleHook(value, env = process.env, options = {}) {
     const input = parseInput(value);
+    if (options.startDashboard)
+        await recordHookActivity(input.hook_event_name, env).catch(() => { });
     const migration = await migrateLegacyHooks(input, env);
     if (typeof migration === 'string')
         return { continue: true, systemMessage: migration };

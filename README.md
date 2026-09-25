@@ -144,7 +144,7 @@ If the transcript is stale, missing, unsupported, or ambiguous, dedupe is disabl
 
 The restore mode controls how much of the Jev-selected evidence is added back to Codex after native compaction. `jevcomp` disables Codex's generic hook-output spill for its two restore hooks, so these modes and `JEVCOMP_RESTORE_MAX_CHARS` are the source of truth for our evidence payload instead of being silently truncated again by Codex. The max-chars setting applies to all three modes; a mode may have a smaller internal limit.
 
-### All the text the summary lost (`preserve`) — default
+### All the text (`preserve`) — default
 
 Uses the most preservation-first reinjection: selected evidence is restored up to the global cap. To stop one enormous tool result from crowding out everything else, an individual very large result is represented by a bounded head+tail excerpt in the injected payload; the full retained normalized archive always stays on disk and its path is included.
 
@@ -156,7 +156,7 @@ Injects a compact index plus a bounded evidence excerpt. The full retained norma
 
 This reduces the context added by `jevcomp` while still giving Codex some exact evidence immediately.
 
-### Only the list of what was kept (`minimal`)
+### Only the list (`minimal`)
 
 Injects only the compact index and file pointers. The full retained normalized archive stays on disk.
 

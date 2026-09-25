@@ -5,12 +5,13 @@ export const SETTINGS_ITEMS = [
     {
         name: 'restore-mode',
         title: 'How much text to send to Codex',
-        help: 'After compaction, jevcomp sends Codex the text its summary lost. All: everything, up to the limit below. '
-            + 'Part: a list plus excerpts. List only: just the names of what was kept; the full text stays saved on your computer.',
+        help: 'After compaction, jevcomp sends Codex what its summary lost. All the text: everything, up to the limit below. '
+            + 'Part of the text: the list plus an excerpt. Only the list: just the names of the kept commands and files and where '
+            + 'they are saved on your computer; Codex opens the full text only if it needs it.',
         choices: [
-            { value: 'preserve', label: 'All the text the summary lost' },
+            { value: 'preserve', label: 'All the text' },
             { value: 'balanced', label: 'Part of the text' },
-            { value: 'minimal', label: 'Only the list of what was kept' },
+            { value: 'minimal', label: 'Only the list' },
         ],
         current: (settings) => settings.restoreMode,
     },
