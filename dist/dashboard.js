@@ -430,7 +430,7 @@ function renderKpis(s){
  const c=s.runStatusCounts||{},n=k=>c[k]||0;
  const parts=[[n('restored'),'com envio','com envio'],[n('nothing_missing')+n('skipped')+n('too_short'),'não enviada','não enviadas'],[n('failed')+n('restore_failed'),'com erro','com erro'],[n('prepared')+n('ready'),'aguardando','aguardando']].filter(p=>p[0]>0).map(p=>plural(p[0],p[1],p[2]));
  $('#kpis').innerHTML=[
-  kpi('Texto reduzido',s.restored?pct(s.completedReductionRatio):'—',s.restored?'nas '+plural(s.restored,'compactação','compactações')+' em que o Jev cortou':'ainda sem compactação concluída',true),
+  kpi('Redução média',s.restored?pct(s.completedReductionRatio):'—',s.restored?'nas '+plural(s.restored,'compactação','compactações')+' em que o Jev cortou':'ainda sem compactação concluída',true),
   kpi('Compactações',f(s.attempts),parts.join(' · ')||'nenhuma ainda'),
   kpi('Chamadas ao Jev',f(s.jevRequests),s.jevUsageReportedRequests?f(s.jevInputTokens)+' tokens de entrada':'o provedor não informou os tokens'),
   kpi('Texto retirado',s.restored?f(s.completedCharsRemoved):'—','caracteres que o Codex deixou de carregar a cada nova mensagem')
