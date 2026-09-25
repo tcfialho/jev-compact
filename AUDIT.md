@@ -249,3 +249,7 @@ The npm name `jev-compact` belongs to another Jev compaction project, so the pac
 Measuring without restoring paid for Jev on every compaction and gave nothing back, so the mode was removed from settings, hooks, history and dashboard.
 
 - A saved `mode` and `JEVCOMP_MODE`/`JEV_COMPACT_MODE` are ignored; every run restores.
+
+## Long-conversation state fitting checked — 2026-09-25
+
+In long conversations the Jev state reaches the `old calls compacted` stage, where each old call is one line with no result text. Measured on the real 1,058,326-character run of 2026-09-25 (301 calls, 299 dropped): re-asking Jev about 15 and then 40 sampled dropped calls with their result previews visible (`full` and `inputs<=200` stages) raised drop risk by about 0.05–0.15, and none crossed the 0.5 threshold. Every decision stayed the same, so per-request states that show each judged result are not worth their cost. Old reads, patches and polling are dropped because they can be reread or rerun, not because Jev cannot see them.

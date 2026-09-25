@@ -160,7 +160,7 @@ test('PLUGIN_DATA wins and stale sidecars are swept', async () => {
 test('full restore remains the default base-compatible behavior', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jev-full-default-'));
   const env = { JEVCOMP_DATA_DIR: root };
-  await prepareState({ sessionId: 'sfull', createdAt: new Date().toISOString(), stats, decisions: [], index: 'INDEX ONLY' }, 'verbatim retained evidence', env, [{ role: 'developer', text: 'verbatim retained evidence', toolCalls: [] }]);
+  await prepareState({ sessionId: 'sfull', createdAt: new Date().toISOString(), stats, decisions: [], index: 'INDEX ONLY' }, 'verbatim retained evidence', env, [{ role: 'assistant', text: 'verbatim retained evidence', toolCalls: [] }]);
   await markReady('sfull', undefined, env);
   const restored = await handleHook({ session_id: 'sfull', hook_event_name: 'SessionStart', source: 'compact' }, env);
   assert.match(restored.hookSpecificOutput.additionalContext, /verbatim retained evidence/);
@@ -364,7 +364,7 @@ test('stale post-compaction checkpoint never suppresses retained evidence', asyn
   ] } })}\n`;
   await writeFile(rollout, compacted);
   const env = { JEVCOMP_DATA_DIR: join(root, 'data') };
-  const retainedMessages = [{ role: 'developer', text: 'critical retained evidence', toolCalls: [] }];
+  const retainedMessages = [{ role: 'assistant', text: 'critical retained evidence', toolCalls: [] }];
   await prepareState({
     sessionId: 'dedupe-stale', createdAt: new Date().toISOString(), stats, decisions: [], index: 'index',
     transcriptPath: rollout,

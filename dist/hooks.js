@@ -98,6 +98,10 @@ async function archivedMessages(messagesFile) {
     }
     return undefined;
 }
+// Codex adds its current instructions back after compaction; older copies, including our last restore, are stale.
+function withoutInstructions(messages) {
+    return messages.filter((message) => message.role !== 'developer' && message.role !== 'system');
+}
 function hasEvidence(messages) {
     return messages.some((message) => message.text.trim() || message.toolCalls.length || (message.toolResults?.length ?? 0) > 0);
 }
@@ -160,7 +164,8 @@ async function restore(input, event, env) {
     let retainedMessages;
     let fallbackContext = '';
     try {
-        retainedMessages = await archivedMessages(preview.messagesFile);
+        const archived = await archivedMessages(preview.messagesFile);
+        retainedMessages = archived && withoutInstructions(archived);
         fallbackContext = retainedMessages
             ? renderMessagesForInjection(retainedMessages)
             : await readFile(preview.contextFile, 'utf8');

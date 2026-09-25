@@ -99,6 +99,11 @@ async function archivedMessages(messagesFile: string | undefined): Promise<Messa
   return undefined;
 }
 
+// Codex adds its current instructions back after compaction; older copies, including our last restore, are stale.
+function withoutInstructions(messages: readonly Message[]): Message[] {
+  return messages.filter((message) => message.role !== 'developer' && message.role !== 'system');
+}
+
 function hasEvidence(messages: readonly Message[]): boolean {
   return messages.some((message) => message.text.trim() || message.toolCalls.length || (message.toolResults?.length ?? 0) > 0);
 }
@@ -181,7 +186,8 @@ async function restore(input: HookInput, event: 'SessionStart' | 'UserPromptSubm
   let retainedMessages: Message[] | undefined;
   let fallbackContext = '';
   try {
-    retainedMessages = await archivedMessages(preview.messagesFile);
+    const archived = await archivedMessages(preview.messagesFile);
+    retainedMessages = archived && withoutInstructions(archived);
     fallbackContext = retainedMessages
       ? renderMessagesForInjection(retainedMessages)
       : await readFile(preview.contextFile, 'utf8');
