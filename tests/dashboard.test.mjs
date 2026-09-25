@@ -20,7 +20,7 @@ const decisions = [
 
 test('dashboard reports measured impact without invented token-savings estimates', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'jev-dashboard-'));
-  const env = { JEVCOMP_DATA_DIR: root };
+  const env = { JEVCOMP_DATA_DIR: root, JEVCOMP_CONFIG_DIR: join(root, 'config') };
   const runId = '2026-09-22T12:00:00.000Z';
   await appendHistory({ at: runId, runId, sessionId: 's1', phase: 'precompact', status: 'prepared', provider: 'typesafe', stats: compactStats, decisions, retainedChars: 4300 }, env);
   await appendHistory({ at: '2026-09-22T12:00:01.000Z', runId, sessionId: 's1', phase: 'restore', status: 'restored', stats: compactStats, restoreMode: 'balanced', retainedChars: 4300, injectedPayloadChars: 1800, injectedChars: 2100 }, env);

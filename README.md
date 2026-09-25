@@ -117,15 +117,13 @@ The dashboard shows values that `jevcomp` can actually measure:
 
 - characters present before and after Jev selection;
 - exact characters removed from retained tool history;
-- how much Jev-selected evidence was already present verbatim after native Codex compaction, so `jevcomp` did not duplicate it;
-- how much selected evidence was still missing and eligible for restore;
-- the complete hook context actually returned to Codex after compaction, plus the evidence-only portion;
-- real Jev input/output token usage when the provider returns usage counters, including how many Jev requests reported them;
-- Jev request count and selection time;
+- how much Jev-selected evidence was not sent because it was already present verbatim after native Codex compaction or went over the limit;
+- the evidence actually returned to Codex after compaction;
+- real Jev input token usage when the provider returns usage counters;
+- Jev request count;
 - native fallbacks, skips and restore errors separately;
-- removed retained-context characters grouped by tool;
 - recent Keep / Shorten / Remove decisions and their Jev loss-risk values;
-- recent compaction runs and which restore mode they used.
+- recent compaction runs and whether evidence was sent to Codex.
 
 It deliberately **does not claim Codex billing-token savings** from a `characters ÷ 4` estimate. Hook mode cannot observe Codex's final billing tokenizer/cache accounting, so the dashboard keeps those numbers separate from what is actually measured.
 

@@ -401,7 +401,18 @@ const STATUS={restored:['ok','Enviado ao Codex','O Codex recebeu o que o resumo 
 const statusPill=r=>{const[cls,label,help]=STATUS[r.status]||STATUS.prepared;const detail=r.status==='failed'&&r.detail?help+' Motivo: '+r.detail:help;return '<span class="pill '+cls+'" title="'+esc(detail)+'">'+label+'</span>'};
 const decisionPill=k=>'<span class="pill '+DECISION[k][0]+'">'+DECISION[k][1]+'</span>';
 
-let lastRun=null,lastRunJson='',tapeFocus=null;
+let lastRun=null,lastRunJson='',tapeFocus=null,tapeSegs=[];
+function tapeSegments(blocks,width){
+ const size=b=>Math.max(1,b.chars),total=blocks.reduce((n,b)=>n+size(b),0)||1,segs=[];
+ for(let i=0;i<blocks.length;){
+  let j=i;while(j<blocks.length&&blocks[j].decision===blocks[i].decision)j++;
+  const run=blocks.slice(i,j),px=run.reduce((n,b)=>n+size(b),0)/total*width;
+  if(run.length>1&&px/run.length<6)segs.push({decision:run[0].decision,chars:run.reduce((n,b)=>n+b.chars,0),count:run.length});
+  else run.forEach(b=>segs.push({decision:b.decision,chars:b.chars,count:1,label:b.label}));
+  i=j;
+ }
+ return segs;
+}
 function renderLastRun(last){
  const json=JSON.stringify(last);
  if(json===lastRunJson)return;
@@ -410,8 +421,9 @@ function renderLastRun(last){
  $('#last-title').textContent='Última compactação · '+stamp(last.at);
  const count=k=>last.blocks.filter(b=>b.decision===k).length;
  $('#last-legend').innerHTML=Object.entries(DECISION).map(([k,[cls,label]])=>'<span class="pill '+cls+'" data-focus="'+k+'">'+label+' <span class="sep">·</span> '+count(k)+'</span>').join('');
- const blocks=last.blocks.map((b,i)=>'<i class="'+b.decision+'" style="flex-grow:'+Math.max(1,b.chars)+'" data-i="'+i+'"></i>').join('');
- const tape=last.blocks.length?'<div class="tape-wrap"><div class="tape-tip" hidden></div><div class="tape" role="img" aria-label="Saídas de comandos e leituras de arquivo da última compactação, coloridas pela decisão do Jev"'+(tapeFocus?' data-focus="'+tapeFocus+'"':'')+(last.blocks.length>120?' style="gap:1px"':'')+'>'+blocks+'</div></div><div class="tape-axis"><span>← mais antigo</span><span>cada bloco é um comando; a largura é o tamanho da saída · passe o mouse para ver qual</span><span>mais recente →</span></div>':'<p class="empty">Nenhum comando ou leitura de arquivo nesta compactação.</p>';
+ tapeSegs=tapeSegments(last.blocks,$('#last-run').clientWidth||1000);
+ const blocks=tapeSegs.map((g,i)=>'<i class="'+g.decision+'" style="flex-grow:'+Math.max(1,g.chars)+'" data-i="'+i+'"></i>').join('');
+ const tape=last.blocks.length?'<div class="tape-wrap"><div class="tape-tip" hidden></div><div class="tape" role="img" aria-label="Saídas de comandos e leituras de arquivo da última compactação, coloridas pela decisão do Jev"'+(tapeFocus?' data-focus="'+tapeFocus+'"':'')+(tapeSegs.length>120?' style="gap:1px"':'')+'>'+blocks+'</div></div><div class="tape-axis"><span>← mais antigo</span><span>cada bloco é um comando; a largura é o tamanho da saída · passe o mouse para ver qual</span><span>mais recente →</span></div>':'<p class="empty">Nenhum comando ou leitura de arquivo nesta compactação.</p>';
  const sent=last.status==='restored'
   ?'<span class="sent-bar"><i style="width:'+Math.max(1,Math.min(100,last.injectedPayloadChars/Math.max(1,last.charsBefore)*100))+'%"></i></span><span class="num">'+f(last.injectedPayloadChars)+' de '+chars(last.charsBefore)+'</span>'
   :'<span></span>'+statusPill(last);
@@ -426,14 +438,15 @@ $('#last-run').addEventListener('mousemove',e=>{
  if(!wrap||!lastRun)return;
  clearTape();
  if(!block)return;
- const b=lastRun.blocks[Number(block.dataset.i)],tip=wrap.querySelector('.tape-tip');
+ const g=tapeSegs[Number(block.dataset.i)],tip=wrap.querySelector('.tape-tip'),decided=DECISION[g.decision][1].toLowerCase();
  block.classList.add('active');
- tip.innerHTML='<b>'+esc(b.label.slice(0,90))+'</b><br>'+chars(b.chars)+' · '+DECISION[b.decision][1].toLowerCase();
+ tip.innerHTML=g.count>1?'<b>'+g.count+' comandos</b><br>'+chars(g.chars)+' · '+decided+'s':'<b>'+esc(g.label.slice(0,90))+'</b><br>'+chars(g.chars)+' · '+decided;
  tip.hidden=false;
  const area=wrap.getBoundingClientRect(),box=block.getBoundingClientRect(),half=tip.offsetWidth/2;
  tip.style.left=Math.min(Math.max(box.left+box.width/2-area.left,half),area.width-half)+'px';
 });
 $('#last-run').addEventListener('mouseleave',clearTape);
+addEventListener('resize',()=>{if(lastRun){lastRunJson='';renderLastRun(lastRun)}});
 
 function kpi(label,value,hint,accent){return '<div class="card kpi"><span class="label">'+label+'</span><span class="value'+(accent?' accent':'')+'">'+value+'</span><span class="hint">'+hint+'</span></div>'}
 function renderKpis(s){
