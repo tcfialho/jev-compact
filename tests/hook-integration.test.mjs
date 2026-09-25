@@ -39,4 +39,3 @@ test('PreCompact -> PostCompact -> SessionStart works end to end', async (t) => 
   assert.match(start.hookSpecificOutput.additionalContext, /Fix login/);
   assert.ok(start.hookSpecificOutput.additionalContext.length < 3000);
 });
-

@@ -377,4 +377,3 @@ test('stale post-compaction checkpoint never suppresses retained evidence', asyn
   const rows = (await readFile(join(env.JEVCOMP_DATA_DIR, 'history.jsonl'), 'utf8')).trim().split(/\n/).map(JSON.parse);
   assert.equal(rows.at(-1).membershipStatus, 'stale');
 });
-
