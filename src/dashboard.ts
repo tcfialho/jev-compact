@@ -366,7 +366,8 @@ const when=s=>{const d=new Date(s);return Number.isNaN(d.getTime())?'—':d.toLo
 const time=s=>{const d=new Date(s);return Number.isNaN(d.getTime())?'—':d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})};
 const metric=(label,number,detail)=>'<div class="metric"><span class="metric-label">'+label+'</span><strong class="metric-number">'+number+'</strong><span class="metric-detail">'+detail+'</span></div>';
 const actionTag=d=>d.pinned?'<span class="tag protected">Recente</span>':d.action==='drop_call'?'<span class="tag neutral">Removido</span>':d.action==='truncate_result'?'<span class="tag pending">Resumido</span>':'<span class="tag success">Inteiro</span>';
- const statusTag=status=>status==='restored'?'<span class="tag success">Enviado ao Codex</span>':status==='nothing_missing'?'<span class="tag neutral">Nada a enviar: o resumo já tinha tudo</span>':status==='too_short'?'<span class="tag neutral">Não enviado: conversa curta</span>':status==='failed'?'<span class="tag fallback">Não enviado: erro antes da compactação</span>':status==='restore_failed'?'<span class="tag fallback">Falha ao enviar</span>':status==='skipped'?'<span class="tag neutral">Não enviado: corte pequeno</span>':status==='ready'?'<span class="tag pending">Aguardando envio</span>':'<span class="tag pending">Aguardando a compactação</span>';
+ const STATUS={restored:['success','Enviado ao Codex','O Codex recebeu o que o resumo perdeu.'],nothing_missing:['neutral','Não enviado: resumo já completo','O resumo do Codex já tinha tudo o que o Jev guardou; não havia o que enviar.'],skipped:['neutral','Não enviado: pouco a cortar','O corte ficaria abaixo do mínimo escolhido em Configurações.'],too_short:['neutral','Não enviado: conversa curta','Menos de duas mensagens; não havia o que avaliar.'],failed:['fallback','Não enviado: erro','O jevcomp teve um erro antes da compactação e o Codex fez o resumo normal.'],restore_failed:['fallback','Falha ao enviar','O jevcomp não conseguiu ler o que tinha guardado.'],ready:['pending','Aguardando envio','Vai junto do próximo prompt ou do início da próxima sessão.'],prepared:['pending','Aguardando a compactação','O Jev já escolheu; o Codex ainda está resumindo.']};
+ const statusTag=r=>{const[cls,label,help]=STATUS[r.status]||STATUS.prepared;const detail=r.status==='failed'&&r.detail?help+' Motivo: '+r.detail:help;return '<span class="tag '+cls+'" title="'+esc(detail)+'">'+label+'</span>'};
  const textAdditional=r=>r.status==='restored'?chars(r.injectedPayloadChars):r.status==='nothing_missing'?'0 caracteres':r.status==='prepared'||r.status==='ready'?'Aguardando':'Não enviado';
 function renderChart(runs){
  const completed=runs.filter(r=>r.status==='restored'&&r.charsBefore>0).slice(0,8);
@@ -401,13 +402,13 @@ function refresh(){
   document.querySelector('#decision-stats').innerHTML=renderDecisions(s.byTool);
   const usage=s.jevUsageReportedRequests?f(s.jevUsageReportedRequests)+' de '+f(s.jevRequests)+' requisições com uso reportado':'Uso não reportado pelo provedor';
    document.querySelector('#details').innerHTML=[
-    metric('Não enviado: erro antes da compactação',f(s.nativeFallbacks),'compactação nativa após falha do Jev'),
+    metric('Erros antes da compactação',f(s.nativeFallbacks),'o Codex fez o resumo normal'),
     metric('Tokens de entrada Jev',s.jevUsageReportedRequests?f(s.jevInputTokens):'—',usage),
     metric('Tokens de saída Jev',s.jevUsageReportedRequests?f(s.jevOutputTokens):'—',usage),
     metric('Tempo médio do Jev',s.evaluatedSelections?f(s.averageSelectionMs)+' ms':'—','não inclui toda a compactação'),
     metric('Duplicatas evitadas',s.nativePresentChars?chars(s.nativePresentChars):'—',s.verifiedMemberships?f(s.verifiedMemberships)+' restores conferidos após a compactação':'nenhum restore conferido ainda')
    ].join('');
-  document.querySelector('#runs').innerHTML=s.runs.slice(0,50).map(r=>'<tr><td>'+when(r.at)+'</td><td>'+statusTag(r.status)+'</td><td>'+textAdditional(r)+'</td></tr>').join('')||'<tr><td colspan="3" class="empty">Nenhuma compactação registrada ainda.</td></tr>';
+  document.querySelector('#runs').innerHTML=s.runs.slice(0,50).map(r=>'<tr><td>'+when(r.at)+'</td><td>'+statusTag(r)+'</td><td>'+textAdditional(r)+'</td></tr>').join('')||'<tr><td colspan="3" class="empty">Nenhuma compactação registrada ainda.</td></tr>';
   document.querySelector('#decisions').innerHTML=s.recentDecisions.slice(0,50).map(d=>'<tr><td>'+esc(d.tool)+'<div class="cell-note">'+when(d.at)+'</div></td><td>'+actionTag(d)+'</td><td><div class="preview" title="'+esc(d.inputPreview)+'">'+esc(d.inputPreview||'—')+'</div></td><td>'+pct(d.dropLoss)+' / '+pct(d.truncateLoss)+'</td><td class="num">'+chars(d.removedChars)+'</td></tr>').join('')||'<tr><td colspan="5" class="empty">Nenhuma decisão registrada ainda.</td></tr>';
   document.querySelector('#live').textContent='dados locais · atualizado '+new Date().toLocaleTimeString('pt-BR');
  });
