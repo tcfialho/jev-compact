@@ -100,7 +100,7 @@ async function spawnOnFreePort(port: number, env: Env, cliPath: string): Promise
     let output = '';
     let errorOutput = '';
     let settled = false;
-    const timeout = setTimeout(() => finish(new Error('dashboard did not start within 5 seconds')), 5000);
+    const timeout = setTimeout(() => finish(new Error('dashboard did not start within 15 seconds')), 15000);
     const finish = (error?: Error, url?: string) => {
       if (settled) return;
       settled = true;

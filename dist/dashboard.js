@@ -172,7 +172,8 @@ export async function stats(env = process.env) {
     const runStatusCounts = {};
     for (const run of runs)
         runStatusCounts[run.status] = (runStatusCounts[run.status] ?? 0) + 1;
-    const latest = prepared.reduce((last, row) => !last || row.at > last.at ? row : last, undefined);
+    const newestOf = (rows) => rows.reduce((last, row) => !last || row.at > last.at ? row : last, undefined);
+    const latest = newestOf(prepared.filter((row) => restoredRunKeys.has(runKey(row)))) ?? newestOf(prepared);
     const lastCompaction = latest ? {
         at: latest.at,
         status: runs.find((run) => run.runId === runKey(latest))?.status ?? 'prepared',
@@ -273,8 +274,8 @@ h1,h2,h3,p{margin:0}h2{font-size:17px;font-weight:650;letter-spacing:-.01em;text
 .chips{display:flex;gap:8px;flex-wrap:wrap}.chips [data-focus]{cursor:default}
 .tape-wrap{position:relative}
 .tape{display:flex;gap:2px;height:42px;margin-top:18px;border-radius:8px;overflow:hidden}
-.tape i{display:block;height:100%;flex:1 1 0;min-width:2px;cursor:help;transition:opacity .15s}
-.tape .k{background:var(--kept)}.tape .s{background:var(--short)}.tape .r{background:var(--removed)}.tape .p{background:var(--pinned)}
+.tape i{display:block;height:100%;flex:1 1 0;min-width:1px;cursor:help;transition:opacity .15s}
+.tape .k{background:var(--kept)}.tape .s{background:var(--short)}.tape .r{background:var(--removed)}.tape .p{background:var(--pinned);min-width:12px}
 .tape[data-focus] i{opacity:.2}
 .tape[data-focus="k"] i.k,.tape[data-focus="s"] i.s,.tape[data-focus="r"] i.r,.tape[data-focus="p"] i.p{opacity:1}
 .tape[data-focus="r"] i.r{background:var(--removed-focus)}
@@ -288,6 +289,12 @@ h1,h2,h3,p{margin:0}h2{font-size:17px;font-weight:650;letter-spacing:-.01em;text
 .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
 .kpi{display:grid;gap:4px}.kpi .label{font-size:12px;color:var(--muted)}.kpi .value{font-family:var(--mono);font-size:28px;font-weight:700;letter-spacing:-.03em}
 .kpi .value.accent{color:var(--accent)}.kpi .hint{font-size:12px;color:var(--muted)}
+.flow{display:grid;gap:14px}
+.flow-steps{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:10px}
+.flow-step{display:grid;gap:4px;align-content:start;background:var(--raised);border-radius:10px;padding:14px}.flow-step .label,.flow-step .hint{font-size:12px;color:var(--muted)}.flow-step b{font-size:22px;font-weight:700}
+.flow-arrow{display:grid;justify-items:center;align-content:center;gap:4px;min-width:96px}.flow-arrow>span:first-child{color:var(--muted);font-size:18px}
+.flow-note{font-size:11px;color:var(--muted);text-align:center;line-height:1.35;max-width:100px}.flow-note b{color:var(--coral);font-weight:600}
+.flow-foot{padding-top:14px;border-top:1px solid var(--line)}
 .table{overflow-x:auto}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th{font-size:11px;color:var(--muted);font-weight:500;text-align:left;padding:0 10px 10px}
@@ -336,7 +343,7 @@ table.rb th,table.rb td{white-space:nowrap}table.rb .rb-grow{width:100%}
 .toast{position:fixed;right:24px;bottom:calc(24px + env(safe-area-inset-bottom,0px));background:var(--text);color:var(--ground);border-radius:10px;padding:9px 15px;font-weight:600;font-size:13px}
 .toast.bad{background:var(--coral);color:var(--ground)}
 @media (max-width:1000px){.settings{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media (max-width:760px){.shell{padding-inline:16px}.group{padding-inline:16px}}
+@media (max-width:760px){.shell{padding-inline:16px}.group{padding-inline:16px}.flow-steps{grid-template-columns:1fr}.flow-arrow>span:first-child{transform:rotate(90deg)}}
 </style></head><body>
 <div class="shell">
  <header class="topbar"><div class="brand"><b>jevcomp</b><span>compactação do Codex</span></div><span class="small muted" id="live">dados locais</span></header>
@@ -344,14 +351,14 @@ table.rb th,table.rb td{white-space:nowrap}table.rb .rb-grow{width:100%}
  <main class="content">
   <div id="error"></div>
   <section class="view" id="view-geral" role="tabpanel" aria-labelledby="nav-geral">
-   <div class="card"><div class="tape-head"><h2 id="last-title">Última compactação</h2><div class="chips" id="last-legend"></div></div><div id="last-run"></div></div>
    <div class="kpis" id="kpis"></div>
+   <div class="card"><div class="tape-head"><h2 id="last-title">Última compactação</h2><div class="chips" id="last-legend"></div></div><div id="last-run"></div></div>
+   <div class="card flow"><h2>Todas as compactações</h2><div id="flow"></div><p class="flow-foot small muted">O Jev escolhe o que guardar da conversa para o Codex continuar depois da compactação.</p></div>
    <div class="card"><h2>Compactações recentes</h2><div class="table" style="margin-top:12px"><table class="rb"><thead><tr><th>Quando</th><th>Resultado</th><th class="rb-grow">Texto antes → depois do corte</th><th class="right">Antes</th><th class="right">Depois</th><th class="right">Redução</th></tr></thead><tbody id="runs"></tbody></table></div></div>
    <div class="card">
-    <div class="decisions-head"><div><h2>Decisões recentes</h2><p class="small muted" style="margin-top:4px">O que o Jev fez com cada comando e leitura de arquivo, da mais nova para a mais antiga.</p></div>
+    <div class="decisions-head"><h2>Decisões recentes</h2>
      <div class="seg filters" role="group" aria-label="Filtrar decisões"><button type="button" data-filter="all" aria-pressed="true">Todas</button><button type="button" data-filter="k" aria-pressed="false">Inteiros</button><button type="button" data-filter="s" aria-pressed="false">Resumidos</button><button type="button" data-filter="r" aria-pressed="false">Removidos</button></div></div>
     <div class="table" style="margin-top:12px"><table><thead><tr><th>Quando</th><th>Comando</th><th>Decisão</th><th>Risco se descartar</th><th class="right">Saída</th><th class="right">Cortado</th></tr></thead><tbody id="decisions"></tbody></table></div>
-    <p class="small muted" style="margin-top:12px">Risco se descartar é a estimativa do Jev de o Codex ainda precisar daquela saída. Ele só corta quando o risco fica abaixo do nível escolhido em Configurações, em "Quanto cortar". Mensagens recentes nunca são avaliadas nem cortadas.</p>
    </div>
   </section>
   <section class="view" id="view-config" role="tabpanel" aria-labelledby="nav-config" hidden>
@@ -395,16 +402,16 @@ const statusPill=r=>{const[cls,label,help]=STATUS[r.status]||STATUS.prepared;con
 const decisionPill=k=>'<span class="pill '+DECISION[k][0]+'">'+DECISION[k][1]+'</span>';
 
 let lastRun=null,lastRunJson='',tapeFocus=null;
-function renderLastRun(last,newest){
- const json=JSON.stringify([last,newest]);
+function renderLastRun(last){
+ const json=JSON.stringify(last);
  if(json===lastRunJson)return;
  lastRunJson=json;lastRun=last;
  if(!last){$('#last-title').textContent='Última compactação';$('#last-legend').innerHTML='';$('#last-run').innerHTML='<p class="empty">Ainda não houve compactação com o Jev.</p>';return}
- $('#last-title').textContent=(newest&&newest!==last.at?'Última compactação com corte · ':'Última compactação · ')+stamp(last.at);
+ $('#last-title').textContent='Última compactação · '+stamp(last.at);
  const count=k=>last.blocks.filter(b=>b.decision===k).length;
  $('#last-legend').innerHTML=Object.entries(DECISION).map(([k,[cls,label]])=>'<span class="pill '+cls+'" data-focus="'+k+'">'+label+' <span class="sep">·</span> '+count(k)+'</span>').join('');
  const blocks=last.blocks.map((b,i)=>'<i class="'+b.decision+'" style="flex-grow:'+Math.max(1,b.chars)+'" data-i="'+i+'"></i>').join('');
- const tape=last.blocks.length?'<div class="tape-wrap"><div class="tape-tip" hidden></div><div class="tape" role="img" aria-label="Saídas de comandos e leituras de arquivo da última compactação, coloridas pela decisão do Jev"'+(tapeFocus?' data-focus="'+tapeFocus+'"':'')+'>'+blocks+'</div></div><div class="tape-axis"><span>← mais antigo</span><span>cada bloco é um comando; a largura é o tamanho da saída · passe o mouse para ver qual</span><span>mais recente →</span></div>':'<p class="empty">Nenhum comando ou leitura de arquivo nesta compactação.</p>';
+ const tape=last.blocks.length?'<div class="tape-wrap"><div class="tape-tip" hidden></div><div class="tape" role="img" aria-label="Saídas de comandos e leituras de arquivo da última compactação, coloridas pela decisão do Jev"'+(tapeFocus?' data-focus="'+tapeFocus+'"':'')+(last.blocks.length>120?' style="gap:1px"':'')+'>'+blocks+'</div></div><div class="tape-axis"><span>← mais antigo</span><span>cada bloco é um comando; a largura é o tamanho da saída · passe o mouse para ver qual</span><span>mais recente →</span></div>':'<p class="empty">Nenhum comando ou leitura de arquivo nesta compactação.</p>';
  const sent=last.status==='restored'
   ?'<span class="sent-bar"><i style="width:'+Math.max(1,Math.min(100,last.injectedPayloadChars/Math.max(1,last.charsBefore)*100))+'%"></i></span><span class="num">'+f(last.injectedPayloadChars)+' de '+chars(last.charsBefore)+'</span>'
   :'<span></span>'+statusPill(last);
@@ -439,8 +446,20 @@ function renderKpis(s){
   kpi('Texto retirado',s.restored?f(s.completedCharsRemoved):'—','caracteres que o Codex deixou de carregar a cada nova mensagem')
  ].join('');
 }
+function renderFlow(s){
+ if(!s.restored){$('#flow').innerHTML='<p class="empty">Ainda sem compactação concluída.</p>';return}
+ const read=s.completedCharsBefore,kept=s.completedCharsAfter,sent=s.injectedPayloadChars;
+ const step=(label,n,hint)=>'<div class="flow-step"><span class="label">'+label+'</span><b class="num">'+f(n)+'</b><span class="hint">'+hint+'</span></div>';
+ const arrow=(n,note)=>'<div class="flow-arrow"><span aria-hidden="true">→</span><span class="flow-note"><b class="num">−'+f(n)+'</b><br>'+note+'</span></div>';
+ $('#flow').innerHTML='<div class="flow-steps">'
+  +step('Texto da conversa analisado',read,'caracteres antes do corte')
+  +arrow(Math.max(0,read-kept),'cortados pelo Jev')
+  +step('Mantido pelo Jev',kept,'o que ainda é útil; o resto foi cortado')
+  +arrow(Math.max(0,kept-sent),'já no resumo ou acima do limite')
+  +step('Enviado ao Codex',sent,'o que o resumo do Codex perdeu, dentro do limite')+'</div>';
+}
 function renderRuns(runs){
- const shown=runs.slice(0,10),max=Math.max(1,...shown.map(r=>r.charsBefore||0));
+ const shown=runs.filter(r=>r.status!=='ready'&&r.status!=='prepared').slice(0,10),max=Math.max(1,...shown.map(r=>r.charsBefore||0));
  $('#runs').innerHTML=shown.map(r=>{
   const failed=r.status==='failed'||r.status==='too_short'||!r.charsBefore,skipped=r.status==='skipped';
   const kept=skipped?'':'<i class="after" style="width:'+Math.max(0,Math.min(100,r.charsAfter/r.charsBefore*100))+'%"></i>';
@@ -465,8 +484,9 @@ $('.filters').addEventListener('click',e=>{const b=e.target.closest('button');if
 function refresh(){
  return fetch('/api/stats',{cache:'no-store'}).then(r=>{if(!r.ok)throw Error('HTTP '+r.status);return r.json()}).then(s=>{
   $('#error').innerHTML='';
-  renderLastRun(s.lastCompaction,s.runs[0]&&s.runs[0].at);
+  renderLastRun(s.lastCompaction);
   renderKpis(s);
+  renderFlow(s);
   renderRuns(s.runs);
   decisions=s.recentDecisions;renderDecisions();
   $('#live').textContent='dados locais · atualizado '+new Date().toLocaleTimeString('pt-BR');
