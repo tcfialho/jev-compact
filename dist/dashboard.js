@@ -240,17 +240,17 @@ function page(token, platform) {
 :root{
   --ground:#f3f5f1;--surface:#ffffff;--raised:#eef2ec;--line:#d9e0d8;--text:#16201a;--muted:#5d6b61;
   --accent:#1f8a4c;--accent-soft:#e2f3e8;--amber:#9a6a0f;--amber-soft:#f7ecd4;--coral:#b8482a;--coral-soft:#f8e3dc;--steel:#3563b8;--steel-soft:#e3eafa;
-  --kept:#1f8a4c;--short:#c79a2b;--removed:#c9d1c8;--pinned:#6f5ba8;
+  --kept:#1f8a4c;--short:#c79a2b;--removed:#c9d1c8;--removed-focus:#9aa59c;--pinned:#6f5ba8;
   --sans:"Onest",ui-sans-serif,system-ui,"Segoe UI",sans-serif;--mono:"JetBrains Mono",ui-monospace,"Cascadia Code",Consolas,monospace;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;
   --ground:#101412;--surface:#171c19;--raised:#1e2521;--line:#2a332d;--text:#e9efe9;--muted:#8e9b92;
   --accent:#7ad69a;--accent-soft:#1b3325;--amber:#e8b457;--amber-soft:#3a2f18;--coral:#ef7d5d;--coral-soft:#3a221b;--steel:#8fb3f0;--steel-soft:#1f2940;
-  --kept:#7ad69a;--short:#e8b457;--removed:#39443d;--pinned:#b39ce8}}
+  --kept:#7ad69a;--short:#e8b457;--removed:#39443d;--removed-focus:#7d8982;--pinned:#b39ce8}}
 :root[data-theme="dark"]{color-scheme:dark;
   --ground:#101412;--surface:#171c19;--raised:#1e2521;--line:#2a332d;--text:#e9efe9;--muted:#8e9b92;
   --accent:#7ad69a;--accent-soft:#1b3325;--amber:#e8b457;--amber-soft:#3a2f18;--coral:#ef7d5d;--coral-soft:#3a221b;--steel:#8fb3f0;--steel-soft:#1f2940;
-  --kept:#7ad69a;--short:#e8b457;--removed:#39443d;--pinned:#b39ce8}
+  --kept:#7ad69a;--short:#e8b457;--removed:#39443d;--removed-focus:#7d8982;--pinned:#b39ce8}
 *{box-sizing:border-box}[hidden]{display:none!important}
 body{margin:0;background:var(--ground);color:var(--text);font:14px/1.55 var(--sans)}
 h1,h2,h3,p{margin:0}h2{font-size:17px;font-weight:650;letter-spacing:-.01em;text-wrap:balance}h3{font-size:14px;font-weight:600}
@@ -277,6 +277,7 @@ h1,h2,h3,p{margin:0}h2{font-size:17px;font-weight:650;letter-spacing:-.01em;text
 .tape .k{background:var(--kept)}.tape .s{background:var(--short)}.tape .r{background:var(--removed)}.tape .p{background:var(--pinned)}
 .tape[data-focus] i{opacity:.2}
 .tape[data-focus="k"] i.k,.tape[data-focus="s"] i.s,.tape[data-focus="r"] i.r,.tape[data-focus="p"] i.p{opacity:1}
+.tape[data-focus="r"] i.r{background:var(--removed-focus)}
 .tape i.active{filter:brightness(1.25)}
 .tape-tip{position:absolute;bottom:calc(100% + 8px);transform:translateX(-50%);background:var(--text);color:var(--ground);border-radius:8px;padding:7px 10px;font-size:12px;line-height:1.4;white-space:nowrap;pointer-events:none;box-shadow:0 4px 14px rgb(0 0 0 / .3);z-index:2}
 .tape-tip b{font-family:var(--mono);font-weight:600}
