@@ -70,7 +70,7 @@ async function untrackedDashboard(port) {
         return undefined;
     }
 }
-async function stopDashboard(port, env) {
+export async function stopDashboard(port, env) {
     const previous = await runningDashboard(port, env);
     if (previous)
         await stopProcess(previous, port);

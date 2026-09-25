@@ -61,7 +61,7 @@ async function untrackedDashboard(port: number): Promise<{ pid: number; url: str
   } catch { return undefined; }
 }
 
-async function stopDashboard(port: number, env: Env): Promise<void> {
+export async function stopDashboard(port: number, env: Env): Promise<void> {
   const previous = await runningDashboard(port, env);
   if (previous) await stopProcess(previous, port);
 }

@@ -1,17 +1,19 @@
 #!/usr/bin/env node
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { basename, dirname, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { compactMessages, reductionRatio } from './compact.js';
-import { startDashboard, stats } from './dashboard.js';
-import { dashboardInstancePath, dashboardPort, restartDashboard, runningDashboard } from './dashboard-service.js';
+import { startDashboard } from './dashboard.js';
+import { dashboardInstancePath, dashboardPort, restartDashboard, runningDashboard, stopDashboard } from './dashboard-service.js';
 import { handleHook } from './hooks.js';
 import { resetUserSettings, setUserSetting, userSettings, type SettingName } from './settings.js';
-import { inspectHooks, installHooks, installRuntime, uninstallHooks } from './install.js';
+import { describeSettings, runSettingsMenu, SETTINGS_ITEMS } from './settings-menu.js';
+import { inspectHooks, installHooks, installRuntime, runtimeDir, uninstallHooks } from './install.js';
 import { adoptLegacyEnvironment, migrateLegacyConfig } from './legacy.js';
 import { enabledPluginRoot } from './plugin-installation.js';
-import { hasSavedProviderKey, providerConfig, resolveApiKey, resolveProvider, saveProviderConfiguration, type JevProvider } from './provider.js';
+import { configDir, hasSavedProviderKey, providerConfig, resolveApiKey, resolveProvider, saveProviderConfiguration, type JevProvider } from './provider.js';
 import { renderMessages } from './render.js';
 import { loadCodexRollout } from './rollout.js';
 import { dataDir } from './store.js';
@@ -24,18 +26,16 @@ function chars(n: number): string { return n >= 1_000_000 ? `${(n / 1_000_000).t
 function help(): void {
   const pluginRoot = enabledPluginRoot();
   const command = pluginRoot ? `node "${join(pluginRoot, 'dist', 'cli.js')}"` : 'jevcomp';
-  const pad = (text: string) => `  ${command} ${text}`;
   console.log(`jevcomp
 
-${pad('setup')}                  Choose OpenRouter or TypeSafe, save your key and connect to Codex
-${pad('doctor')}                 Check that everything is ready
-${pad('stats')}                  Show what jevcomp did so far
-${pad('dashboard')}              Restart the dashboard
-${pad('settings')}               Show settings
-${pad('settings NAME VALUE')}    Change a setting ("settings reset" restores the defaults)
-${pad('uninstall')}              Disconnect jevcomp from Codex
+  ${command} install      Connect jevcomp to Codex: choose OpenRouter or TypeSafe and enter your key
+  ${' '.repeat(command.length)}              (run it again to change them)
+  ${command} settings     Change how jevcomp behaves
+  ${command} doctor       Check that everything works
+  ${command} dashboard    Restart the dashboard
+  ${command} uninstall    Remove jevcomp from Codex (your key and history are kept)
 
-Dashboard: ${dashboardAddress()} (starts with each Codex session)`);
+Dashboard: ${dashboardAddress()} (opens with each Codex session)`);
 }
 
 function dashboardAddress(): string { return `http://127.0.0.1:${dashboardPort(process.env)}/`; }
@@ -52,7 +52,7 @@ function interactive(): boolean { return !!process.stdin.isTTY && !!process.stdo
 
 async function chooseProvider(requested: string | undefined): Promise<Exclude<JevProvider, 'auto'>> {
   if (requested === 'openrouter' || requested === 'typesafe') return requested;
-  if (requested) throw new Error('usage: jevcomp setup [openrouter|typesafe]');
+  if (requested) throw new Error('usage: jevcomp install [openrouter|typesafe]');
   const current = resolveProvider({ env: process.env });
   if (!interactive()) return current;
   const answer = await ask(`Provider: 1) OpenRouter  2) TypeSafe  [${current === 'openrouter' ? 1 : 2}]: `);
@@ -105,14 +105,10 @@ async function readiness() {
 }
 
 
-function printSettings(settings: ReturnType<typeof userSettings>): void {
-  console.log(`mode                  ${settings.mode}`);
-  console.log(`restore-mode          ${settings.restoreMode}`);
-  console.log(`restore-max-chars     ${settings.restoreMaxChars}`);
-  console.log(`pin-recent-messages   ${settings.pinRecentMessages}`);
-  console.log(`loss-threshold        ${settings.lossThreshold}`);
-  console.log(`min-reduction-ratio   ${settings.minReductionRatio}`);
-  if (settings.restoreModeWarning) console.log(`warning               ${settings.restoreModeWarning}`);
+function printSettings(): void {
+  const rows = describeSettings(process.env);
+  const width = Math.max(...rows.map((row) => row.title.length)) + 4;
+  for (const row of rows) console.log(`${row.title.padEnd(width)}${row.value}${row.lockedBy ? ` (set by ${row.lockedBy})` : ''}`);
 }
 
 async function saveKey(provider: Exclude<JevProvider, 'auto'>): Promise<void> {
@@ -126,7 +122,7 @@ async function saveKey(provider: Exclude<JevProvider, 'auto'>): Promise<void> {
   throw new Error(`${label} API key is required`);
 }
 
-async function setup(requestedProvider: string | undefined): Promise<void> {
+async function install(requestedProvider: string | undefined): Promise<void> {
   const provider = await chooseProvider(requestedProvider);
   await saveKey(provider);
   if (enabledPluginRoot()) {
@@ -137,7 +133,24 @@ async function setup(requestedProvider: string | undefined): Promise<void> {
     await installHooks(runtimeCli);
     console.log('Connected to Codex. Restart Codex, type /hooks and approve the four jevcomp hooks.');
   }
-  console.log(`Dashboard: ${dashboardAddress()} (starts with each Codex session)`);
+  console.log(`Dashboard: ${dashboardAddress()} (opens with each Codex session)`);
+}
+
+function pluginId(pluginRoot: string): string {
+  return `jevcomp@${basename(dirname(dirname(pluginRoot)))}`;
+}
+
+async function uninstall(): Promise<void> {
+  const pluginRoot = enabledPluginRoot();
+  await stopDashboard(dashboardPort(process.env), process.env);
+  await uninstallHooks();
+  if (pluginRoot) execFileSync('codex', ['plugin', 'remove', pluginId(pluginRoot)], { stdio: 'inherit', windowsHide: true });
+  else await rm(runtimeDir(process.env), { recursive: true, force: true });
+  console.log('jevcomp was removed from Codex.');
+  console.log(`Kept your key and settings: ${configDir(process.env)}`);
+  console.log(`Kept your history: ${dataDir(process.env)}`);
+  console.log('Delete those folders to erase them too.');
+  if (fileURLToPath(import.meta.url).includes(`node_modules${sep}jevcomp${sep}`)) console.log('To remove the jevcomp command as well: npm uninstall -g jevcomp');
 }
 
 async function main(): Promise<void> {
@@ -147,20 +160,22 @@ async function main(): Promise<void> {
   if (!cmd || cmd === 'help' || cmd === '--help' || cmd === '-h') return help();
   if (cmd === 'hook') { const out = await handleHook(JSON.parse(await stdin()), process.env, { startDashboard: true }); process.stdout.write(`${JSON.stringify(out)}\n`); return; }
 
-  if (cmd === 'settings' || cmd === 'config') {
-    if (!args.length) { printSettings(userSettings(process.env)); return; }
-    if (args[0] === 'reset') { await resetUserSettings(process.env); console.log('Settings reset to defaults.'); printSettings(userSettings(process.env)); return; }
-    if (args.length < 2) throw new Error('usage: jevcomp settings <mode|restore-mode|restore-max-chars|pin-recent-messages|loss-threshold|min-reduction-ratio> <value>');
-    const name = args[0] as SettingName;
-    if (!['mode','restore-mode','restore-max-chars','pin-recent-messages','loss-threshold','min-reduction-ratio'].includes(name)) throw new Error(`unknown setting: ${args[0]}`);
-    const settings = await setUserSetting(name, args[1]!, process.env);
-    console.log(`Saved ${name}=${args[1]}`);
-    printSettings(settings);
+  if (cmd === 'settings') {
+    if (args[0] === 'reset') { await resetUserSettings(process.env); printSettings(); return; }
+    if (args.length >= 2) {
+      const name = args[0] as SettingName;
+      if (!SETTINGS_ITEMS.some((item) => item.name === name)) throw new Error(`unknown setting: ${args[0]}`);
+      await setUserSetting(name, args[1]!, process.env);
+      printSettings();
+      return;
+    }
+    if (!interactive()) { printSettings(); return; }
+    await runSettingsMenu({ input: process.stdin, output: process.stdout }, process.env);
     return;
   }
 
-  if (cmd === 'setup') { await setup(args[0]); return; }
-  if (cmd === 'uninstall') { console.log(`Updated: ${await uninstallHooks()}`); return; }
+  if (cmd === 'install') { await install(args[0]); return; }
+  if (cmd === 'uninstall') { await uninstall(); return; }
 
   if (cmd === 'doctor') {
     const value = await readiness();
@@ -179,7 +194,7 @@ async function main(): Promise<void> {
     console.log(`    Pruning: loss <= ${value.settings.lossThreshold.toFixed(2)} · pin ${fmt(value.settings.pinRecentMessages)} recent messages · require ${(value.settings.minReductionRatio * 100).toFixed(0)}% reduction`);
     if (value.settings.restoreModeWarning) console.log(`WARN  ${value.settings.restoreModeWarning}`);
     if (!value.apiKeyConfigured || (!value.pluginRoot && !value.hooksInstalled)) {
-      console.log(`\nFix: ${value.pluginRoot ? `node "${fileURLToPath(import.meta.url)}"` : 'jevcomp'} setup`);
+      console.log(`\nFix: ${value.pluginRoot ? `node "${fileURLToPath(import.meta.url)}"` : 'jevcomp'} install`);
     }
     return;
   }
@@ -195,21 +210,6 @@ async function main(): Promise<void> {
     else process.stdout.write(`${rendered}\n`);
     if (jsonFile) await writeFile(jsonFile, `${JSON.stringify({ messages: result.messages, decisions: result.decisions, stats: result.stats }, null, 2)}\n`);
     console.error(JSON.stringify({ ...result.stats, reductionRatio: reductionRatio(result) }, null, 2));
-    return;
-  }
-
-  if (cmd === 'stats') {
-    const value = await stats();
-    if (args.includes('--json')) { console.log(JSON.stringify(value, null, 2)); return; }
-    console.log(`Compaction attempts: ${fmt(value.attempts)} · restored: ${fmt(value.restored)} · observed: ${fmt(value.observed)} · skips: ${fmt(value.skipped)} · native fallbacks: ${fmt(value.nativeFallbacks)} · restore issues: ${fmt(value.restoreFailures)}`);
-    console.log(`Completed retained-copy reduction: ${chars(value.completedCharsRemoved)} (${(value.completedReductionRatio * 100).toFixed(1)}%)`);
-    console.log(`Exact evidence already present after native compaction: ${chars(value.nativePresentChars)}`);
-    console.log(`Hook context delivered after compaction: ${chars(value.injectedChars)}`);
-    console.log(`  selected evidence inside it: ${chars(value.injectedPayloadChars)}`);
-    if (value.observed) console.log(`Observe mode would have delivered: ${chars(value.wouldInjectChars)} (${chars(value.wouldInjectPayloadChars)} selected evidence)`);
-    if (value.jevUsageReportedRequests) console.log(`Jev provider usage reported: ${fmt(value.jevInputTokens)} input + ${fmt(value.jevOutputTokens)} output tokens (${fmt(value.jevUsageReportedRequests)}/${fmt(value.jevRequests)} requests reported usage)`);
-    else console.log(`Jev provider usage: not reported (${fmt(value.jevRequests)} requests observed)`);
-    console.log(`Average Jev selection time: ${fmt(value.averageSelectionMs)} ms`);
     return;
   }
 

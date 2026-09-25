@@ -64,6 +64,18 @@ function normalizedOperationMode(value) {
         return 'observe';
     return undefined;
 }
+const ENV_NAMES = {
+    'mode': ['JEVCOMP_MODE'],
+    'restore-mode': ['JEVCOMP_RESTORE_MODE'],
+    'restore-max-chars': ['JEVCOMP_RESTORE_MAX_CHARS', 'JEVCOMP_CONTEXT_CHARS'],
+    'pin-recent-messages': ['JEVCOMP_PIN_RECENT_MESSAGES', 'JEVCOMP_PRESERVE_RECENT'],
+    'loss-threshold': ['JEVCOMP_LOSS_THRESHOLD', 'JEVCOMP_KEEP_THRESHOLD'],
+    'min-reduction-ratio': ['JEVCOMP_MIN_REDUCTION_RATIO', 'JEVCOMP_MIN_REDUCTION'],
+};
+/** Names the environment variable that wins over the saved value, if any. */
+export function settingOverride(name, env = process.env) {
+    return ENV_NAMES[name].find((key) => (env[key] ?? '').trim() !== '');
+}
 export function userSettings(env = process.env) {
     const stored = saved(env);
     const operationMode = normalizedOperationMode(env.JEVCOMP_MODE) ?? stored.mode ?? 'active';

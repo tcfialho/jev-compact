@@ -45,10 +45,12 @@ Then, in Codex:
 
 ```bash
 npm install -g --install-links github:tcfialho/jevcomp
-jevcomp setup
+jevcomp install
 ```
 
-`setup` asks for OpenRouter or TypeSafe and your key. Then restart Codex, type `/hooks` and approve the four hooks. Run `jevcomp setup` again anytime to change the provider or key.
+`install` asks for OpenRouter or TypeSafe and your key. Then restart Codex, type `/hooks` and approve the four hooks. Run `jevcomp install` again anytime to change the provider or key.
+
+To remove it: `jevcomp uninstall` (your key and history are kept), then `npm uninstall -g jevcomp`.
 
 Keep `--install-links`: without it, current npm versions install a broken link.
 
@@ -129,25 +131,9 @@ The dashboard shows values that `jevcomp` can actually measure:
 
 It deliberately **does not claim Codex billing-token savings** from a `characters ÷ 4` estimate. Hook mode cannot observe Codex's final billing tokenizer/cache accounting, so the dashboard keeps those numbers separate from what is actually measured.
 
-For a terminal summary:
-
-```bash
-jevcomp stats
-```
-
-Machine-readable output:
-
-```bash
-jevcomp stats --json
-```
-
 ## Observe mode
 
-If you want to measure `jevcomp` on your own Codex sessions before allowing it to add context back, use:
-
-```bash
-jevcomp settings mode observe
-```
+To measure `jevcomp` on your own sessions before letting it add anything back, run `jevcomp settings` and set **What jevcomp does** to **Measure only**.
 
 In `observe` mode the real Jev selection still runs at `PreCompact`, and after native compaction `jevcomp` performs the same exact membership/dedupe analysis it would use in active mode. It records:
 
@@ -160,11 +146,7 @@ In `observe` mode the real Jev selection still runs at `PreCompact`, and after n
 
 But it returns **no `additionalContext`** to Codex. Native Codex context is therefore unchanged by `jevcomp`; the trade-off is that you still pay the Jev request cost and wait for its selection during compaction.
 
-Return to normal behavior with:
-
-```bash
-jevcomp settings mode active
-```
+Set it back to **Add back lost details** to return to normal.
 
 `shadow` remains accepted as an environment/config alias for `observe`, but `observe` is the preferred user-facing name.
 
@@ -183,31 +165,19 @@ If the transcript is stale, missing, unsupported, or ambiguous, dedupe is disabl
 
 The restore mode controls how much of the Jev-selected evidence is added back to Codex after native compaction. `jevcomp` disables Codex's generic hook-output spill for its two restore hooks, so these modes and `JEVCOMP_RESTORE_MAX_CHARS` are the source of truth for our evidence payload instead of being silently truncated again by Codex. The max-chars setting applies to all three modes; a mode may have a smaller internal limit.
 
-### `preserve` — default
-
-```bash
-jevcomp settings restore-mode preserve
-```
+### Everything missing (`preserve`) — default
 
 Uses the most preservation-first reinjection: selected evidence is restored up to the global cap. To stop one enormous tool result from crowding out everything else, an individual very large result is represented by a bounded head+tail excerpt in the injected payload; the full retained normalized archive always stays on disk and its path is included.
 
 Use this when continuity/exact details matter more than minimizing the extra context added after compaction.
 
-### `balanced`
-
-```bash
-jevcomp settings restore-mode balanced
-```
+### Balanced (`balanced`)
 
 Injects a compact index plus a bounded evidence excerpt. The full retained normalized archive stays on disk.
 
 This reduces the context added by `jevcomp` while still giving Codex some exact evidence immediately.
 
-### `minimal`
-
-```bash
-jevcomp settings restore-mode minimal
-```
+### Short list only (`minimal`)
 
 Injects only the compact index and file pointers. The full retained normalized archive stays on disk.
 
@@ -217,26 +187,16 @@ Legacy values `full`, `hybrid` and `index` are still accepted as aliases for `pr
 
 ## Options most users may care about
 
-Defaults are preservation-first. You can change the user-facing settings without editing shell files; this matters when Codex is launched from a desktop app.
-
-```bash
-jevcomp settings
-jevcomp settings mode observe
-jevcomp settings restore-mode balanced
-jevcomp settings restore-max-chars 40000
-jevcomp settings pin-recent-messages 8
-jevcomp settings loss-threshold 0.4
-jevcomp settings min-reduction-ratio 0.20
-```
+Run `jevcomp settings` (plugin: ask Codex to change a jevcomp setting). It opens a menu: arrow keys pick a setting, Left/Right or Enter changes it, and each change is saved right away. The defaults suit most people.
 
 | Setting | Default | Plain meaning | If you increase it |
 | --- | ---: | --- | --- |
-| `mode` | `active` | `active` restores selected evidence; `observe` runs the same analysis and records what would happen without injecting context. | Named mode, not a number. Use `observe` to validate behavior safely. |
-| `restore-mode` | `preserve` | How much selected evidence is put back after compaction. | This is a named mode, not a number: `balanced` and `minimal` inject less. |
-| `restore-max-chars` | `60000` | Hard character cap for the evidence payload in **every** restore mode, before the recovery header/path. `0` disables this global cap; mode-specific limits and the per-result anti-crowding safeguard still apply. | More selected old evidence can return to the model. |
-| `pin-recent-messages` | `6` | Newest normalized messages Jev is not allowed to prune. | Safer/more conservative; less history becomes removable. |
-| `loss-threshold` | `0.5` | Maximum Jev loss-risk accepted for removing/shortening evidence. The action only happens when its risk is **below** this value. | More aggressive pruning because a higher estimated loss risk is tolerated. |
-| `min-reduction-ratio` | `0.15` | Minimum measured character reduction required before a retained sidecar is used. | Requires a larger reduction before jevcomp adds anything back. |
+| **What jevcomp does** (`mode`) | `active` | `active` restores selected evidence; `observe` runs the same analysis and records what would happen without injecting context. | Named mode, not a number. Use `observe` to validate behavior safely. |
+| **How much to add back** (`restore-mode`) | `preserve` | How much selected evidence is put back after compaction. | This is a named mode, not a number: `balanced` and `minimal` inject less. |
+| **Most text added back** (`restore-max-chars`) | `60000` | Hard character cap for the evidence payload in **every** restore mode, before the recovery header/path. `0` disables this global cap; mode-specific limits and the per-result anti-crowding safeguard still apply. | More selected old evidence can return to the model. |
+| **Recent messages never touched** (`pin-recent-messages`) | `6` | Newest normalized messages Jev is not allowed to prune. | Safer/more conservative; less history becomes removable. |
+| **How boldly to trim** (`loss-threshold`) | `0.5` | Maximum Jev loss-risk accepted for removing/shortening evidence. The action only happens when its risk is **below** this value. | More aggressive pruning because a higher estimated loss risk is tolerated. |
+| **Skip small gains** (`min-reduction-ratio`) | `0.15` | Minimum measured character reduction required before a retained sidecar is used. | Requires a larger reduction before jevcomp adds anything back. |
 
 `loss-threshold` is deliberately named around what Jev answers: **risk of losing still-needed information**. If you are unsure, leave it at `0.5`; the dashboard exposes the actual decision scores.
 
@@ -263,7 +223,7 @@ Provider endpoint/model overrides (`JEV_MODEL`, `JEV_BASE_URL`, `OPENROUTER_JEV_
 
 ## Provider configuration
 
-`jevcomp setup` saves the provider and key (run it again to change them). Settings are saved in the same folder, so Codex opened from the desktop does not depend on terminal startup files.
+`jevcomp install` saves the provider and key (run it again to change them). Settings are saved in the same folder, so Codex opened from the desktop does not depend on terminal startup files.
 
 Environment variables are also supported and override saved configuration:
 
@@ -278,7 +238,7 @@ export OPENROUTER_API_KEY="..."
 export JEVCOMP_PROVIDER=openrouter
 ```
 
-Key-file overrides are supported through `TYPESAFE_API_KEY_FILE`, `OPENROUTER_API_KEY_FILE`, or `JEVCOMP_KEY_FILE` when the provider is selected by environment or by the saved setup preference.
+Key-file overrides are supported through `TYPESAFE_API_KEY_FILE`, `OPENROUTER_API_KEY_FILE`, or `JEVCOMP_KEY_FILE` when the provider is selected by environment or by the saved `install` preference.
 
 ## Manual inspection
 
@@ -321,7 +281,7 @@ Each active session can have:
 - structured retained `.messages.json`;
 - local `history.jsonl` observability data.
 
-Old per-session sidecars are cleaned up automatically. History is retained for dashboard/statistics use. `setup` keeps its stable compiled runtime under `~/.codex/jevcomp/runtime` (or under `CODEX_HOME` when set) unless `JEVCOMP_RUNTIME_DIR` overrides it.
+Old per-session sidecars are cleaned up automatically. History is retained for dashboard/statistics use. `install` keeps its stable compiled runtime under `~/.codex/jevcomp/runtime` (or under `CODEX_HOME` when set) unless `JEVCOMP_RUNTIME_DIR` overrides it.
 
 ## Development
 
@@ -329,7 +289,7 @@ Old per-session sidecars are cleaned up automatically. History is retained for d
 npm run check
 ```
 
-Runtime code has no third-party npm dependencies. `dist/` is committed so a downloaded/cloned release can run setup/install without building first.
+Runtime code has no third-party npm dependencies. `dist/` is committed so a downloaded/cloned release can run `install` without building first.
 
 The test suite uses fake/local Jev transports and does not require paid network calls.
 

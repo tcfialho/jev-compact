@@ -12,6 +12,8 @@ export interface UserSettings {
     minReductionRatio: number;
 }
 export declare function settingsPath(env?: Env): string;
+/** Names the environment variable that wins over the saved value, if any. */
+export declare function settingOverride(name: SettingName, env?: Env): string | undefined;
 export declare function userSettings(env?: Env): UserSettings;
 export declare function setUserSetting(name: SettingName, rawValue: string, env?: Env): Promise<UserSettings>;
 export declare function resetUserSettings(env?: Env): Promise<void>;
