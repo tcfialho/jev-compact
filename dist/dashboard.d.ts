@@ -47,10 +47,11 @@ interface LastCompaction {
     blocks: {
         tool: string;
         label: string;
-        decision: 'kept' | 'short' | 'drop' | 'pin';
+        decision: DecisionCode;
         chars: number;
     }[];
 }
+type DecisionCode = 'k' | 's' | 'r' | 'p';
 /** Build only measured statistics. No chars/4 or claimed Codex billing-token savings. */
 export declare function stats(env?: Record<string, string | undefined>): Promise<{
     measured: boolean;
@@ -99,8 +100,12 @@ export declare function stats(env?: Record<string, string | undefined>): Promise
         dropLoss: number;
         truncateLoss: number;
         pinned: boolean;
+        decision: DecisionCode;
+        label: string;
+        kind: string;
     }[];
     runs: RunSummary[];
+    runStatusCounts: Partial<Record<"prepared" | "ready" | "restored" | "skipped" | "failed" | "nothing_missing" | "too_short" | "restore_failed", number>>;
     lastCompaction: LastCompaction | null;
     recentEvents: HistoryRow[];
 }>;

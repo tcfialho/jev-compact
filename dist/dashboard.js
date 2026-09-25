@@ -4,6 +4,24 @@ import { createServer } from 'node:http';
 import { applySettingsChange, settingsSnapshot } from './dashboard-settings.js';
 import { readableHistoryPaths, readHistory } from './store.js';
 import { settingsPath, userSettings } from './settings.js';
+function decisionCode(decision) {
+    if (decision.pinned)
+        return 'p';
+    return decision.action === 'drop_call' ? 'r' : decision.action === 'truncate_result' ? 's' : 'k';
+}
+const FILE_READERS = new Set(['cat', 'type', 'get-content', 'gc', 'head', 'tail', 'less', 'more', 'nl']);
+const SEARCHERS = new Set(['rg', 'grep', 'select-string', 'findstr', 'ag', 'ack']);
+/** Tells a layperson what kind of step it was, from the command's first word or the tool's name. */
+function commandKind(tool, label) {
+    const words = label.trim().split(/\s+/);
+    const first = words[0]?.toLowerCase() ?? '';
+    const name = tool.toLowerCase();
+    if (FILE_READERS.has(first) || (first === 'sed' && words.includes('-n')) || /read|view/.test(name))
+        return 'leitura de arquivo';
+    if (SEARCHERS.has(first) || (first === 'git' && words[1] === 'grep') || /search|grep|find/.test(name))
+        return 'busca';
+    return 'comando';
+}
 // Previews are cut at a fixed length, so the JSON is often incomplete and has to be read field by field.
 function commandLabel(tool, preview) {
     const text = preview ?? '';
@@ -94,6 +112,9 @@ export async function stats(env = process.env) {
         dropLoss: decision.dropLoss,
         truncateLoss: decision.truncateLoss,
         pinned: decision.pinned,
+        decision: decisionCode(decision),
+        label: commandLabel(decision.name, decision.inputPreview),
+        kind: commandKind(decision.name, commandLabel(decision.name, decision.inputPreview)),
     })))
         .slice(0, 100);
     const readyByRun = new Map();
@@ -148,6 +169,9 @@ export async function stats(env = process.env) {
         });
     }
     runs.sort((a, b) => b.at.localeCompare(a.at));
+    const runStatusCounts = {};
+    for (const run of runs)
+        runStatusCounts[run.status] = (runStatusCounts[run.status] ?? 0) + 1;
     const latest = prepared.reduce((last, row) => !last || row.at > last.at ? row : last, undefined);
     const lastCompaction = latest ? {
         at: latest.at,
@@ -157,7 +181,7 @@ export async function stats(env = process.env) {
         blocks: (latest.decisions ?? []).map((decision) => ({
             tool: decision.name,
             label: commandLabel(decision.name, decision.inputPreview),
-            decision: decision.pinned ? 'pin' : decision.action === 'drop_call' ? 'drop' : decision.action === 'truncate_result' ? 'short' : 'kept',
+            decision: decisionCode(decision),
             chars: positive(decision.originalChars),
         })),
     } : null;
@@ -199,304 +223,330 @@ export async function stats(env = process.env) {
         byTool: [...byTool.values()].sort((a, b) => b.removedChars - a.removedChars),
         recentDecisions,
         runs: runs.slice(0, 100),
+        runStatusCounts,
         lastCompaction,
         recentEvents: rows.slice(-100).reverse(),
     };
 }
-function page(token) {
+function page(token, platform) {
+    const system = platform === 'win32' ? 'do Windows' : 'do sistema';
     return `<!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="jevcomp-token" content="${token}">
+<meta name="jevcomp-token" content="${token}"><meta name="jevcomp-system" content="${system}">
 <title>jevcomp · dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap">
 <style>
-:root{color-scheme:dark;--bg:#151514;--panel:#20201f;--panel2:#252524;--line:#393936;--text:#f3f3f1;--muted:#a2a29e;--green:#5bc66b;--bar:#73816e;--orange:#ee7847;--amber:#e2ac42;--blue:#8cacfa;--removed:#41443f}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font:13px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
-main{max-width:1160px;margin:auto;padding:22px 18px 56px}
-h1,h2,p{margin:0}h1{font-size:18px;letter-spacing:-.03em}h2{font-size:15px;font-weight:680}
-.top{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:20px}
-.top-left{display:flex;align-items:baseline;gap:13px}.top-note,.sub,.muted{color:var(--muted)}.top-note{font-size:11px}
-.live{font-size:11px;color:var(--muted)}.section{margin-top:18px}
-.panel,.metric{background:var(--panel);border:1px solid var(--line);border-radius:11px}
-.panel{padding:18px;min-width:0}.sub{font-size:12px;margin-top:4px;line-height:1.45}
-.hero,.pair{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.reduction-card{display:grid;grid-template-rows:auto 1fr auto}
-.reduction-number{align-self:center;font-size:clamp(64px,7vw,96px);line-height:1;letter-spacing:-.06em;color:var(--green)}
-.reduction-foot p{margin-top:12px}.reduction-foot b{font-size:16px}.reduction-foot .muted{font-size:11px}
-.track{height:11px;background:#353b35;border-radius:7px;overflow:hidden}
-.track i{display:block;height:100%;background:var(--green);border-radius:7px}
-.hero-metrics{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:12px}
-.metric{padding:16px;display:flex;flex-direction:column;justify-content:center;min-width:0}
-.metric-label{font-size:11px;color:var(--muted)}.metric-number{font-size:26px;font-weight:760;line-height:1.2;margin:9px 0;color:var(--green)}
-.metric-detail{font-size:11px;color:var(--muted);line-height:1.4}
-.flow-panel{margin-top:18px}.flow{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;align-items:center;gap:9px;margin-top:16px}
-.flow-node{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:13px;min-width:0}
-.flow-node .label{font-size:11px;color:var(--muted)}.flow-node strong{display:block;font-size:20px;line-height:1.25;margin-top:5px}
-.flow-node .detail{font-size:11px;color:var(--muted);margin-top:4px}.arrow{color:var(--muted);font-size:17px}
-details{margin-top:14px}summary{cursor:pointer;color:var(--green);font-size:12px}details p{font-size:12px;color:var(--muted);margin-top:7px}
-.pair>.panel{min-height:255px}.bar-key{display:flex;gap:16px;margin:13px 0;color:var(--muted);font-size:11px}
-.swatch{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}.swatch.before{background:var(--bar)}.swatch.after{background:var(--green)}
-.chart-run{display:grid;grid-template-columns:52px minmax(0,1fr);gap:8px;margin-top:14px;align-items:start}
-.chart-time{font-size:11px;color:var(--muted)}.chart-lines{min-width:0}.chart-line{display:grid;grid-template-columns:minmax(0,1fr) 95px;gap:6px;align-items:center;margin-bottom:5px}
-.bar-track{height:12px}.bar{display:block;height:12px;border-radius:3px}.bar.before{background:var(--bar)}.bar.after{background:var(--green)}
-.chart-value{font-size:11px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
-.stat{display:flex;justify-content:space-between;gap:10px;padding:11px 0;border-bottom:1px solid var(--line)}
-.stat b{font-variant-numeric:tabular-nums}.empty{padding:20px;color:var(--muted);text-align:center}
-.section-heading{margin-bottom:10px}.detail-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
-.detail-grid .metric{min-height:104px}.detail-grid .metric-number{font-size:23px}
-.table-panel{padding:0;overflow-x:auto}table{width:100%;border-collapse:collapse}
-th,td{padding:10px 12px;border-bottom:1px solid #353532;text-align:left;vertical-align:top}
-th{font-size:10px;color:var(--muted);font-weight:600}tr:last-child td{border-bottom:0}tr:hover td{background:#262624}
-.num{text-align:right;font-variant-numeric:tabular-nums}.cell-note{font-size:11px;color:var(--muted);margin-top:3px}
-.preview{max-width:330px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tag{display:inline-block;border:1px solid var(--line);border-radius:5px;padding:2px 7px;font-size:11px;font-weight:650;white-space:nowrap}
-.tag.success{border-color:#316e3b;color:var(--green);background:#1a3020}.tag.fallback{border-color:#81462f;color:var(--orange);background:#34241d}
-.tag.pending{border-color:#775b2b;color:var(--amber);background:#332b1c}.tag.neutral{border-color:#485370;color:var(--blue);background:#232a39}
-.tag.protected{border-color:#66567b;color:#bda2e8;background:#2b2532}
-.tag.removed{border-color:#55584f;color:var(--muted);background:var(--removed)}
-.last-run{margin-bottom:18px}.last-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
-.legend{display:flex;gap:6px;flex-wrap:wrap}.legend .tag{cursor:default}
-.tape-wrap{position:relative;margin-top:14px}
-.tape{display:flex;gap:2px;height:42px;border-radius:7px;overflow:hidden}
-.tape i{flex:1 1 0;min-width:2px;transition:opacity .15s}.tape i.active{filter:brightness(1.25)}
-.tape .kept{background:var(--green)}.tape .short{background:var(--amber)}.tape .drop{background:var(--removed)}.tape .pin{background:#bda2e8}
+:root{
+  --ground:#f3f5f1;--surface:#ffffff;--raised:#eef2ec;--line:#d9e0d8;--text:#16201a;--muted:#5d6b61;
+  --accent:#1f8a4c;--accent-soft:#e2f3e8;--amber:#9a6a0f;--amber-soft:#f7ecd4;--coral:#b8482a;--coral-soft:#f8e3dc;--steel:#3563b8;--steel-soft:#e3eafa;
+  --kept:#1f8a4c;--short:#c79a2b;--removed:#c9d1c8;--pinned:#6f5ba8;
+  --sans:"Onest",ui-sans-serif,system-ui,"Segoe UI",sans-serif;--mono:"JetBrains Mono",ui-monospace,"Cascadia Code",Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;
+  --ground:#101412;--surface:#171c19;--raised:#1e2521;--line:#2a332d;--text:#e9efe9;--muted:#8e9b92;
+  --accent:#7ad69a;--accent-soft:#1b3325;--amber:#e8b457;--amber-soft:#3a2f18;--coral:#ef7d5d;--coral-soft:#3a221b;--steel:#8fb3f0;--steel-soft:#1f2940;
+  --kept:#7ad69a;--short:#e8b457;--removed:#39443d;--pinned:#b39ce8}}
+:root[data-theme="dark"]{color-scheme:dark;
+  --ground:#101412;--surface:#171c19;--raised:#1e2521;--line:#2a332d;--text:#e9efe9;--muted:#8e9b92;
+  --accent:#7ad69a;--accent-soft:#1b3325;--amber:#e8b457;--amber-soft:#3a2f18;--coral:#ef7d5d;--coral-soft:#3a221b;--steel:#8fb3f0;--steel-soft:#1f2940;
+  --kept:#7ad69a;--short:#e8b457;--removed:#39443d;--pinned:#b39ce8}
+*{box-sizing:border-box}[hidden]{display:none!important}
+body{margin:0;background:var(--ground);color:var(--text);font:14px/1.55 var(--sans)}
+h1,h2,h3,p{margin:0}h2{font-size:17px;font-weight:650;letter-spacing:-.01em;text-wrap:balance}h3{font-size:14px;font-weight:600}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.shell{max-width:1120px;margin:auto;padding-inline:24px}
+.topbar{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;padding-block:24px 14px}
+.brand{display:flex;align-items:baseline;gap:12px}.brand b{font-family:var(--mono);font-size:18px;letter-spacing:-.02em}.brand span{font-size:12px;color:var(--muted)}
+.nav{display:flex;gap:4px;border-bottom:1px solid var(--line)}
+.nav button{all:unset;cursor:pointer;padding:10px 14px;color:var(--muted);font-weight:500;border-bottom:2px solid transparent;margin-bottom:-1px}
+.nav button:hover{color:var(--text)}
+.nav button[aria-selected="true"]{color:var(--text);border-bottom-color:var(--accent)}
+.nav button:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(--steel);outline-offset:2px}
+.content{padding-block:24px 64px;min-width:0}
+.view{display:grid;gap:22px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px;min-width:0}
+.muted{color:var(--muted)}.small{font-size:12px}
+.error{font-size:13px;color:var(--coral);background:var(--coral-soft);border-radius:10px;padding:10px 14px;margin-bottom:18px}
+.empty{padding:18px 0 4px;color:var(--muted);font-size:13px}
+.tape-head{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:baseline}
+.chips{display:flex;gap:8px;flex-wrap:wrap}.chips [data-focus]{cursor:default}
+.tape-wrap{position:relative}
+.tape{display:flex;gap:2px;height:42px;margin-top:18px;border-radius:8px;overflow:hidden}
+.tape i{display:block;height:100%;flex:1 1 0;min-width:2px;cursor:help;transition:opacity .15s}
+.tape .k{background:var(--kept)}.tape .s{background:var(--short)}.tape .r{background:var(--removed)}.tape .p{background:var(--pinned)}
 .tape[data-focus] i{opacity:.2}
-.tape[data-focus="kept"] i.kept,.tape[data-focus="short"] i.short,.tape[data-focus="drop"] i.drop,.tape[data-focus="pin"] i.pin{opacity:1}
-.tape-tip{position:absolute;bottom:calc(100% + 8px);transform:translateX(-50%);background:var(--text);color:var(--bg);border-radius:7px;padding:6px 9px;font-size:11px;white-space:nowrap;pointer-events:none;z-index:2}
-.tape-tip b{font-family:ui-monospace,"Cascadia Code",Consolas,monospace;font-weight:600}
-.tape-axis{display:flex;justify-content:space-between;gap:12px;margin-top:6px;font-size:10px;color:var(--muted)}
-.sent{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:14px;align-items:center;margin-top:16px;padding-top:14px;border-top:1px solid var(--line);font-size:12px}
-.sent .track{height:8px}.sent .track i{background:var(--blue)}.sent b{font-variant-numeric:tabular-nums}
-.error{margin-bottom:16px;padding:12px 16px;border:1px solid #81462f;border-radius:8px;color:var(--orange)}
-footer{color:var(--muted);font-size:11px;margin-top:18px}
-@media(max-width:850px){.hero,.pair{grid-template-columns:1fr}.reduction-number{margin:30px 0}.detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:540px){main{padding:18px 12px 42px}.top{align-items:flex-start}.top-left{display:block}.hero-metrics{grid-template-rows:auto}.flow{grid-template-columns:1fr}.arrow{display:none}.detail-grid{grid-template-columns:1fr 1fr}table{min-width:660px}}
-[hidden]{display:none!important}h3{margin:0;font-size:13px;font-weight:650}.small{font-size:11px}
-.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:18px}
-.tab{background:none;border:0;border-bottom:2px solid transparent;color:var(--muted);font:inherit;font-weight:600;padding:9px 12px;cursor:pointer;margin-bottom:-1px}
-.tab[aria-selected="true"]{color:var(--text);border-bottom-color:var(--green)}.tab:hover{color:var(--text)}
-.tab:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
-.settings{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:12px;align-items:start}
-.settings-side{display:grid;gap:12px}
-.row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 18px;align-items:center;padding:14px 0;border-bottom:1px solid var(--line)}
-.row p{grid-column:1;font-size:11px;color:var(--muted);line-height:1.45;max-width:62ch}
-.row .control{grid-column:2;grid-row:1/span 2;justify-self:end}
-.seg{display:inline-flex;flex-wrap:wrap;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:2px;gap:2px}
-.seg button{background:none;border:1px solid transparent;border-radius:6px;color:var(--muted);font:inherit;font-size:12px;font-weight:600;padding:5px 10px;cursor:pointer;white-space:nowrap;font-variant-numeric:tabular-nums}
+.tape[data-focus="k"] i.k,.tape[data-focus="s"] i.s,.tape[data-focus="r"] i.r,.tape[data-focus="p"] i.p{opacity:1}
+.tape i.active{filter:brightness(1.25)}
+.tape-tip{position:absolute;bottom:calc(100% + 8px);transform:translateX(-50%);background:var(--text);color:var(--ground);border-radius:8px;padding:7px 10px;font-size:12px;line-height:1.4;white-space:nowrap;pointer-events:none;box-shadow:0 4px 14px rgb(0 0 0 / .3);z-index:2}
+.tape-tip b{font-family:var(--mono);font-weight:600}
+.tape-axis{display:flex;justify-content:space-between;gap:12px;font-size:11px;color:var(--muted);margin-top:6px}
+.sent{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:14px;align-items:center;margin-top:18px;padding-top:16px;border-top:1px solid var(--line);font-size:13px}
+.sent-label{color:var(--muted)}.sent-bar{height:8px;border-radius:4px;background:var(--raised);overflow:hidden}.sent-bar i{display:block;height:100%;background:var(--steel)}
+.sep{color:var(--muted);font-size:10px;margin:0 -2px}.pill .sep{color:inherit;opacity:.6;margin:0 2px}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.kpi{display:grid;gap:4px}.kpi .label{font-size:12px;color:var(--muted)}.kpi .value{font-family:var(--mono);font-size:28px;font-weight:700;letter-spacing:-.03em}
+.kpi .value.accent{color:var(--accent)}.kpi .hint{font-size:12px;color:var(--muted)}
+.table{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{font-size:11px;color:var(--muted);font-weight:500;text-align:left;padding:0 10px 10px}
+td{padding:11px 10px;border-top:1px solid var(--line);vertical-align:middle}
+.mini{display:flex;height:6px;width:140px;border-radius:3px;overflow:hidden;background:var(--raised)}
+.mini i{display:block;background:var(--accent)}
+.decisions-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.filters button{font-size:12px;padding:5px 11px}
+.cmd{font-family:var(--mono);font-size:12.5px;display:block;max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cmd-kind{display:block;font-size:11px;color:var(--muted);margin-top:2px}
+.right{text-align:right}
+.risk{display:flex;align-items:center;gap:8px}.risk-bar{width:70px;height:6px;border-radius:3px;background:var(--raised);overflow:hidden}.risk-bar i{display:block;height:100%;background:var(--steel)}
+.pill{display:inline-block;font-size:12px;font-weight:600;border-radius:999px;padding:2px 9px;white-space:nowrap}.pill[title]{cursor:help}
+.pill.ok{color:var(--accent);background:var(--accent-soft)}.pill.skip{color:var(--steel);background:var(--steel-soft)}.pill.fail{color:var(--coral);background:var(--coral-soft)}
+.pill.wait{color:var(--amber);background:var(--amber-soft)}
+.pill.short{color:var(--short);background:color-mix(in srgb,var(--short) 20%,transparent)}
+.pill.drop{color:var(--muted);background:var(--removed)}
+.pill.pin{color:var(--pinned);background:color-mix(in srgb,var(--pinned) 20%,transparent)}
+.settings{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.55fr);gap:18px;align-items:start}
+.groups{display:grid;gap:18px}
+.group{padding:6px 20px 12px}
+.group-head{padding:16px 0 4px;display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap}
+.setting{display:grid;gap:8px;padding:16px 0}.setting + .setting{border-top:1px solid var(--line)}
+.setting p{font-size:13px;color:var(--muted);max-width:68ch}
+.setting .control{justify-self:start;margin-top:4px}
+.seg{display:inline-flex;flex-wrap:wrap;gap:2px;padding:3px;border-radius:10px;background:var(--raised)}
+.seg button{all:unset;cursor:pointer;padding:6px 12px;border-radius:8px;font-size:13px;font-weight:500;color:var(--muted);white-space:nowrap}
 .seg button:hover{color:var(--text)}
-.seg button[aria-pressed="true"]{background:#1a3020;border-color:#316e3b;color:var(--green)}
-.seg button:disabled{cursor:not-allowed;opacity:.55}
-.locked{grid-column:1/-1;font-size:11px;color:var(--amber)}
-.kv{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:12px}
-.kv:last-child{border-bottom:0}.kv>span:first-child{color:var(--muted)}.kv b{text-align:right;overflow-wrap:anywhere}
-.btn{background:var(--panel2);border:1px solid var(--line);border-radius:7px;color:var(--text);font:inherit;font-size:12px;font-weight:600;padding:6px 11px;cursor:pointer}
-.btn:hover{border-color:#55554f}.btn.primary{background:#1a3020;border-color:#316e3b;color:var(--green)}
-.btn.danger{color:var(--orange);border-color:#81462f;background:#34241d}
-.key-edit{display:grid;gap:8px;margin-top:10px}
-.key-edit input{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:7px;color:var(--text);font:12px ui-monospace,"Cascadia Code",Consolas,monospace;padding:8px 10px}
-.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center}
-.group-title{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
-.note{font-size:11px;color:var(--amber);margin-top:8px}
-.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#1a3020;border:1px solid #316e3b;color:var(--green);border-radius:8px;padding:8px 14px;font-weight:650;font-size:12px}
-.toast.bad{background:#34241d;border-color:#81462f;color:var(--orange)}
-@media(max-width:850px){.settings{grid-template-columns:1fr}}
-@media(max-width:540px){.row{grid-template-columns:1fr}.row .control{grid-column:1;grid-row:auto;justify-self:start}}
-</style></head><body><main>
-<header class="top"><div class="top-left"><h1>jevcomp</h1><span class="top-note">compactação do Codex</span></div><span class="live" id="live">dados locais · atualização a cada 5s</span></header>
-<nav class="tabs" role="tablist" aria-label="Seções"><button class="tab" role="tab" id="tab-resumo" aria-selected="true" aria-controls="view-resumo">Resumo</button><button class="tab" role="tab" id="tab-config" aria-selected="false" aria-controls="view-config">Configurações</button></nav>
-<div id="error"></div>
-<div id="view-resumo" role="tabpanel" aria-labelledby="tab-resumo">
-<section class="panel last-run" aria-labelledby="last-title"><div class="last-head"><h2 id="last-title">Última compactação</h2><div class="legend" id="last-legend"></div></div><div id="last-run"></div></section>
-<section class="hero" aria-label="Resumo do Jev">
- <div class="panel reduction-card"><div><h2>Quanto texto foi reduzido?</h2><p class="sub">Nas compactações em que o jevcomp enviou texto ao Codex.</p></div><strong class="reduction-number" id="reduction">—</strong><div class="reduction-foot"><div class="track"><i id="reduction-bar"></i></div><p><b id="removed">—</b><br><span class="muted">do texto lido nessas compactações</span></p></div></div>
- <div class="hero-metrics">
-  <div class="metric"><span class="metric-label">Chamadas ao modelo Jev</span><strong class="metric-number" id="jev-requests">—</strong><span class="metric-detail">Pedidos feitos ao Jev para escolher o que guardar.</span></div>
-  <div class="metric"><span class="metric-label">Último envio ao Codex</span><strong class="metric-number" id="last-delivery">—</strong><span class="metric-detail" id="last-delivery-detail">O jevcomp ainda não enviou texto ao Codex.</span></div>
-  <div class="metric"><span class="metric-label">Compactações registradas</span><strong class="metric-number" id="attempts">—</strong><span class="metric-detail">Vezes em que o Codex iniciou uma compactação.</span></div>
-  <div class="metric"><span class="metric-label">Texto retirado</span><strong class="metric-number" id="removed-count">—</strong><span class="metric-detail">Caracteres cortados nessas compactações.</span></div>
- </div>
-</section>
-<section class="panel flow-panel"><h2>De onde vem essa redução?</h2><p class="sub">O Jev escolhe o que guardar da conversa para o Codex continuar depois da compactação.</p><div class="flow" id="flow"></div><details><summary>Por que os dois últimos números são diferentes?</summary><p>O Jev primeiro guarda o que importa; depois o jevcomp envia ao Codex só o que o resumo perdeu, dentro do limite configurado.</p></details></section>
-<section class="section pair">
- <div class="panel"><h2>Texto por compactação</h2><p class="sub">Antes e depois do corte, em caracteres, nas compactações com envio ao Codex.</p><div class="bar-key"><span><i class="swatch before"></i>Antes</span><span><i class="swatch after"></i>Depois</span></div><div id="rounds-chart"></div></div>
- <div class="panel"><h2>Decisões de retenção</h2><p class="sub" id="decision-caption">Nas compactações com envio ao Codex.</p><div id="decision-stats"></div><details><summary>Entenda estas decisões</summary><p>Inteiro: o comando e toda a saída foram guardados. Resumido: só o início da saída foi guardado. Removido: ficou de fora; o Codex pode rodar o comando de novo se precisar. Recente: as mensagens mais novas nunca são cortadas.</p></details></div>
-</section>
-<section class="section"><div class="section-heading"><h2>Detalhes da integração</h2><p class="sub">Informações adicionais registradas pelos hooks locais.</p></div><div class="detail-grid" id="details"></div></section>
-<section class="section"><div class="section-heading"><h2>Compactações recentes</h2><p class="sub">O que aconteceu em cada compactação.</p></div><div class="panel table-panel"><table><thead><tr><th>Quando</th><th>Resultado</th><th>Texto enviado ao Codex</th></tr></thead><tbody id="runs"></tbody></table></div></section>
-<section class="section"><div class="section-heading"><h2>Decisões recentes</h2><p class="sub">Os dois percentuais de cada linha estimam o risco de perder informação útil ao remover ou resumir o resultado. Quanto maior o percentual, maior o risco.</p></div><div class="panel table-panel"><table><thead><tr><th>Ferramenta</th><th>Decisão</th><th>Entrada</th><th>Risco de remover / resumir</th><th class="num">Caracteres retirados</th></tr></thead><tbody id="decisions"></tbody></table></div></section>
-</div>
-<div id="view-config" role="tabpanel" aria-labelledby="tab-config" hidden>
- <div class="settings">
-  <div class="settings-side">
-   <section class="panel" aria-labelledby="h-conexao">
-    <h2 id="h-conexao">Conexão</h2><p class="sub">Quem o jevcomp usa para decidir o que manter.</p>
-    <div class="seg" role="group" aria-label="Provedor" id="provider-seg" style="margin-top:14px"><button type="button" data-provider="openrouter" aria-pressed="false">OpenRouter</button><button type="button" data-provider="typesafe" aria-pressed="false">TypeSafe</button></div>
-    <div id="provider-note"></div>
-    <div style="margin-top:12px" id="connection"></div>
-    <div class="actions"><button class="btn" type="button" id="change-key">Trocar chave</button></div>
-    <form class="key-edit" id="key-form" hidden>
-     <label class="muted small" for="key-input" id="key-label">Nova chave</label>
-     <input id="key-input" type="password" autocomplete="off" spellcheck="false">
-     <div class="actions" style="margin-top:0"><button class="btn primary" type="submit">Salvar chave</button><button class="btn" type="button" id="cancel-key">Cancelar</button></div>
-    </form>
-   </section>
-   <section class="panel" aria-labelledby="h-codex"><h2 id="h-codex">Codex</h2><p class="sub">Como o jevcomp está ligado ao Codex.</p><div style="margin-top:12px" id="codex-info"></div></section>
-  </div>
-  <section class="panel" aria-labelledby="h-comport">
-   <div class="group-title"><h2 id="h-comport">Comportamento</h2><span class="muted small">Cada mudança é salva na hora e vale a partir da próxima compactação.</span></div>
-   <div id="behavior"></div>
-   <div class="actions" id="reset-area"></div>
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--text);box-shadow:0 1px 2px rgb(0 0 0 / .12),inset 0 0 0 1px var(--line)}
+.seg.numbers button{font-family:var(--mono);font-size:12px}
+.seg[aria-disabled="true"]{opacity:.5}.seg[aria-disabled="true"] button{cursor:not-allowed}
+.note{grid-column:1/-1;font-size:12px;color:var(--amber);background:var(--amber-soft);border-radius:8px;padding:8px 10px}
+.btn{all:unset;cursor:pointer;font-size:13px;font-weight:600;padding:7px 13px;border-radius:9px;background:var(--raised);color:var(--text)}
+.btn:hover{box-shadow:inset 0 0 0 1px var(--line)}
+.btn.primary{background:var(--accent);color:var(--ground)}
+.btn.quiet{background:none;color:var(--coral)}
+.key-form{display:grid;gap:8px}
+.key-form input{min-width:0;font:13px var(--mono);color:var(--text);background:var(--ground);border:1px solid var(--line);border-radius:9px;padding:8px 11px}
+.key-actions{display:flex;gap:8px;flex-wrap:wrap}
+.info{display:flex;justify-content:space-between;gap:12px;padding:12px 0;font-size:13px}.info + .info{border-top:1px solid var(--line)}.info span:first-child{color:var(--muted)}.info b{font-weight:600;text-align:right;overflow-wrap:anywhere}
+.conn-body{margin-top:12px}.conn-note{font-size:12px;color:var(--muted);line-height:1.5;margin:6px 0 10px}.conn-note.warn{color:var(--amber)}.info .none{color:var(--muted);font-weight:500}
+.confirm{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.toast{position:fixed;right:24px;bottom:calc(24px + env(safe-area-inset-bottom,0px));background:var(--text);color:var(--ground);border-radius:10px;padding:9px 15px;font-weight:600;font-size:13px}
+.toast.bad{background:var(--coral);color:var(--ground)}
+@media (max-width:1000px){.settings{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:760px){.shell{padding-inline:16px}.group{padding-inline:16px}}
+</style></head><body>
+<div class="shell">
+ <header class="topbar"><div class="brand"><b>jevcomp</b><span>compactação do Codex</span></div><span class="small muted" id="live">dados locais</span></header>
+ <nav class="nav" role="tablist" aria-label="Seções"><button role="tab" id="nav-geral" aria-controls="view-geral" aria-selected="true">Resumo</button><button role="tab" id="nav-config" aria-controls="view-config" aria-selected="false">Configurações</button></nav>
+ <main class="content">
+  <div id="error"></div>
+  <section class="view" id="view-geral" role="tabpanel" aria-labelledby="nav-geral">
+   <div class="card"><div class="tape-head"><h2 id="last-title">Última compactação</h2><div class="chips" id="last-legend"></div></div><div id="last-run"></div></div>
+   <div class="kpis" id="kpis"></div>
+   <div class="card"><h2>Compactações recentes</h2><div class="table" style="margin-top:12px"><table><thead><tr><th>Quando</th><th>Resultado</th><th>Corte</th><th class="right">Enviado ao Codex</th></tr></thead><tbody id="runs"></tbody></table></div></div>
+   <div class="card">
+    <div class="decisions-head"><div><h2>Decisões recentes</h2><p class="small muted" style="margin-top:4px">O que o Jev fez com cada comando e leitura de arquivo, da mais nova para a mais antiga.</p></div>
+     <div class="seg filters" role="group" aria-label="Filtrar decisões"><button type="button" data-filter="all" aria-pressed="true">Todas</button><button type="button" data-filter="k" aria-pressed="false">Inteiros</button><button type="button" data-filter="s" aria-pressed="false">Resumidos</button><button type="button" data-filter="r" aria-pressed="false">Removidos</button></div></div>
+    <div class="table" style="margin-top:12px"><table><thead><tr><th>Quando</th><th>Comando</th><th>Decisão</th><th>Risco se descartar</th><th class="right">Saída</th><th class="right">Cortado</th></tr></thead><tbody id="decisions"></tbody></table></div>
+    <p class="small muted" style="margin-top:12px">Risco se descartar é a estimativa do Jev de o Codex ainda precisar daquela saída. Ele só corta quando o risco fica abaixo do nível escolhido em Configurações, em "Quanto cortar". Mensagens recentes nunca são avaliadas nem cortadas.</p>
+   </div>
   </section>
- </div>
+  <section class="view" id="view-config" role="tabpanel" aria-labelledby="nav-config" hidden>
+   <div class="settings">
+    <div class="groups">
+     <div class="card group"><div class="group-head"><h2>Conexão</h2><span class="small muted">Quem decide o que guardar</span></div>
+      <div class="setting"><h3>Provedor</h3><p>OpenRouter e TypeSafe usam o mesmo modelo Jev. Escolha aquele em que você tem conta.</p><div id="connection" class="control"></div></div></div>
+     <div class="card group"><div class="group-head"><h2>Codex</h2><span class="small muted">Como o jevcomp está ligado ao Codex</span></div><div id="codex-info"></div></div>
+    </div>
+    <div class="groups">
+     <div class="card group"><div class="group-head"><h2>Comportamento</h2><span class="small muted">Cada mudança é salva na hora</span></div>
+      <div id="behavior"></div>
+      <div class="setting" id="reset-area"><h3>Voltar ao padrão</h3><p>Desfaz as mudanças acima. Provedor e chave continuam como estão.</p><div class="control"></div></div>
+     </div>
+    </div>
+   </div>
+  </section>
+ </main>
 </div>
-<footer>Dados do histórico local do jevcomp. Caracteres retirados não representam economia de tokens cobrados pelo Codex. A dashboard escuta somente em 127.0.0.1.</footer>
-</main><div class="toast" id="toast" role="status" hidden></div><script>
+<div class="toast" id="toast" role="status" hidden></div>
+<script>
+const token=document.querySelector('meta[name="jevcomp-token"]').content;
+const SYSTEM=document.querySelector('meta[name="jevcomp-system"]').content;
+const $=s=>document.querySelector(s);
 const f=n=>Number(n||0).toLocaleString('pt-BR');
-const pct=n=>(Number(n||0)*100).toFixed(1)+'%';
+const pct=n=>(Number(n||0)*100).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})+'%';
 const chars=n=>f(n)+' caracteres';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const when=s=>{const d=new Date(s);return Number.isNaN(d.getTime())?'—':d.toLocaleString('pt-BR')};
-const time=s=>{const d=new Date(s);return Number.isNaN(d.getTime())?'—':d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})};
-const metric=(label,number,detail)=>'<div class="metric"><span class="metric-label">'+label+'</span><strong class="metric-number">'+number+'</strong><span class="metric-detail">'+detail+'</span></div>';
-const DECISION={kept:['success','Inteiro'],short:['pending','Resumido'],drop:['removed','Removido'],pin:['protected','Recente']};
-const decisionOf=d=>d.pinned?'pin':d.action==='drop_call'?'drop':d.action==='truncate_result'?'short':'kept';
-const actionTag=d=>{const[cls,label]=DECISION[decisionOf(d)];return '<span class="tag '+cls+'">'+label+'</span>'};
- const STATUS={restored:['success','Enviado ao Codex','O Codex recebeu o que o resumo perdeu.'],nothing_missing:['neutral','Não enviado: resumo já completo','O resumo do Codex já tinha tudo o que o Jev guardou; não havia o que enviar.'],skipped:['neutral','Não enviado: pouco a cortar','Quase tudo ainda era útil: o corte ficaria abaixo do mínimo escolhido em Configurações.'],too_short:['neutral','Não enviado: pouco a cortar','A conversa tinha menos de duas mensagens; não havia o que cortar.'],failed:['fallback','Não enviado: erro','O jevcomp teve um erro antes da compactação e o Codex fez o resumo normal.'],restore_failed:['fallback','Falha ao enviar','O jevcomp não conseguiu ler o que tinha guardado.'],ready:['pending','Aguardando envio','Vai junto do próximo prompt ou do início da próxima sessão.'],prepared:['pending','Aguardando a compactação','O Jev já escolheu; o Codex ainda está resumindo.']};
- const statusTag=r=>{const[cls,label,help]=STATUS[r.status]||STATUS.prepared;const detail=r.status==='failed'&&r.detail?help+' Motivo: '+r.detail:help;return '<span class="tag '+cls+'" title="'+esc(detail)+'">'+label+'</span>'};
- const textAdditional=r=>r.status==='restored'?chars(r.injectedPayloadChars):r.status==='nothing_missing'?'0 caracteres':r.status==='prepared'||r.status==='ready'?'Aguardando':'Não enviado';
+const date=s=>new Date(s);
+const time=s=>date(s).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+const day=s=>date(s).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});
+const stamp=s=>day(s)+' '+time(s);
+const shortStamp=s=>date(s).toDateString()===new Date().toDateString()?time(s):stamp(s);
+const plural=(n,one,many)=>f(n)+' '+(n===1?one:many);
+let toastTimer;
+function toast(text,bad){const el=$('#toast');el.textContent=text;el.className='toast'+(bad?' bad':'');el.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>{el.hidden=true},2200)}
+
+const DECISION={k:['ok','Inteiro'],s:['short','Resumido'],r:['drop','Removido'],p:['pin','Recente']};
+const STATUS={restored:['ok','Enviado ao Codex','O Codex recebeu o que o resumo perdeu.'],nothing_missing:['skip','Não enviado: resumo já completo','O resumo do Codex já tinha tudo o que o Jev guardou; não havia o que enviar.'],skipped:['skip','Não enviado: pouco a cortar','Quase tudo ainda era útil: o corte ficaria abaixo do mínimo escolhido em Configurações.'],too_short:['skip','Não enviado: pouco a cortar','A conversa tinha menos de duas mensagens; não havia o que cortar.'],failed:['fail','Não enviado: erro','O jevcomp teve um erro antes da compactação e o Codex fez o resumo normal.'],restore_failed:['fail','Falha ao enviar','O jevcomp não conseguiu ler o que tinha guardado.'],ready:['wait','Aguardando envio','Vai junto do próximo prompt ou do início da próxima sessão.'],prepared:['wait','Aguardando a compactação','O Jev já escolheu; o Codex ainda está resumindo.']};
+const statusPill=r=>{const[cls,label,help]=STATUS[r.status]||STATUS.prepared;const detail=r.status==='failed'&&r.detail?help+' Motivo: '+r.detail:help;return '<span class="pill '+cls+'" title="'+esc(detail)+'">'+label+'</span>'};
+const decisionPill=k=>'<span class="pill '+DECISION[k][0]+'">'+DECISION[k][1]+'</span>';
+
 let lastRun=null,lastRunJson='',tapeFocus=null;
-function renderLastRun(last){
- const json=JSON.stringify(last);
+function renderLastRun(last,newest){
+ const json=JSON.stringify([last,newest]);
  if(json===lastRunJson)return;
  lastRunJson=json;lastRun=last;
- const legend=document.querySelector('#last-legend'),body=document.querySelector('#last-run');
- if(!last){document.querySelector('#last-title').textContent='Última compactação';legend.innerHTML='';body.innerHTML='<div class="empty">Ainda não houve compactação com o Jev.</div>';return}
- const d=new Date(last.at);
- document.querySelector('#last-title').textContent='Última compactação · '+d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})+' '+time(last.at);
+ if(!last){$('#last-title').textContent='Última compactação';$('#last-legend').innerHTML='';$('#last-run').innerHTML='<p class="empty">Ainda não houve compactação com o Jev.</p>';return}
+ $('#last-title').textContent=(newest&&newest!==last.at?'Última compactação com corte · ':'Última compactação · ')+stamp(last.at);
  const count=k=>last.blocks.filter(b=>b.decision===k).length;
- legend.innerHTML=Object.entries(DECISION).map(([k,[cls,label]])=>'<span class="tag '+cls+'" data-focus="'+k+'">'+label+' · '+count(k)+'</span>').join('');
+ $('#last-legend').innerHTML=Object.entries(DECISION).map(([k,[cls,label]])=>'<span class="pill '+cls+'" data-focus="'+k+'">'+label+' <span class="sep">·</span> '+count(k)+'</span>').join('');
  const blocks=last.blocks.map((b,i)=>'<i class="'+b.decision+'" style="flex-grow:'+Math.max(1,b.chars)+'" data-i="'+i+'"></i>').join('');
- const tape=last.blocks.length?'<div class="tape-wrap"><div class="tape-tip" hidden></div><div class="tape" role="img" aria-label="Saídas de comandos e leituras de arquivo da última compactação, coloridas pela decisão do Jev"'+(tapeFocus?' data-focus="'+tapeFocus+'"':'')+'>'+blocks+'</div></div><div class="tape-axis"><span>← mais antigo</span><span>cada bloco é um comando; a largura é o tamanho da saída · passe o mouse para ver qual</span><span>mais recente →</span></div>':'<div class="empty">Nenhum comando ou leitura de arquivo nesta compactação.</div>';
- const sentValue=last.status==='restored'?'<b>'+f(last.injectedPayloadChars)+' de '+chars(last.charsBefore)+'</b>':statusTag(last);
- const sentBar=last.status==='restored'?'<div class="track"><i style="width:'+Math.max(1,Math.min(100,last.injectedPayloadChars/Math.max(1,last.charsBefore)*100))+'%"></i></div>':'<span></span>';
- body.innerHTML=tape+'<div class="sent"><span class="muted">Enviado ao Codex depois da compactação</span>'+sentBar+sentValue+'</div>';
+ const tape=last.blocks.length?'<div class="tape-wrap"><div class="tape-tip" hidden></div><div class="tape" role="img" aria-label="Saídas de comandos e leituras de arquivo da última compactação, coloridas pela decisão do Jev"'+(tapeFocus?' data-focus="'+tapeFocus+'"':'')+'>'+blocks+'</div></div><div class="tape-axis"><span>← mais antigo</span><span>cada bloco é um comando; a largura é o tamanho da saída · passe o mouse para ver qual</span><span>mais recente →</span></div>':'<p class="empty">Nenhum comando ou leitura de arquivo nesta compactação.</p>';
+ const sent=last.status==='restored'
+  ?'<span class="sent-bar"><i style="width:'+Math.max(1,Math.min(100,last.injectedPayloadChars/Math.max(1,last.charsBefore)*100))+'%"></i></span><span class="num">'+f(last.injectedPayloadChars)+' de '+chars(last.charsBefore)+'</span>'
+  :'<span></span>'+statusPill(last);
+ $('#last-run').innerHTML=tape+'<div class="sent"><span class="sent-label">Enviado ao Codex depois da compactação</span>'+sent+'</div>';
 }
-function setTapeFocus(k){tapeFocus=k;const tape=document.querySelector('.tape');if(!tape)return;if(k)tape.dataset.focus=k;else delete tape.dataset.focus}
-document.querySelector('#last-legend').addEventListener('mouseover',e=>{const tag=e.target.closest('[data-focus]');if(tag)setTapeFocus(tag.dataset.focus)});
-document.querySelector('#last-legend').addEventListener('mouseleave',()=>setTapeFocus(null));
-document.querySelector('#last-run').addEventListener('mousemove',e=>{
- const block=e.target.closest('.tape i'),wrap=document.querySelector('.tape-wrap');if(!wrap)return;
- const tip=wrap.querySelector('.tape-tip');
- wrap.querySelectorAll('.tape i.active').forEach(i=>{if(i!==block)i.classList.remove('active')});
- if(!block||!lastRun){tip.hidden=true;return}
- const b=lastRun.blocks[Number(block.dataset.i)];
+function setTapeFocus(k){tapeFocus=k;const tape=$('.tape');if(!tape)return;if(k)tape.dataset.focus=k;else delete tape.dataset.focus}
+$('#last-legend').addEventListener('mouseover',e=>{const tag=e.target.closest('[data-focus]');if(tag)setTapeFocus(tag.dataset.focus)});
+$('#last-legend').addEventListener('mouseleave',()=>setTapeFocus(null));
+function clearTape(){const wrap=$('.tape-wrap');if(!wrap)return;wrap.querySelector('.tape-tip').hidden=true;wrap.querySelectorAll('.tape i.active').forEach(i=>i.classList.remove('active'))}
+$('#last-run').addEventListener('mousemove',e=>{
+ const block=e.target.closest('.tape i'),wrap=$('.tape-wrap');
+ if(!wrap||!lastRun)return;
+ clearTape();
+ if(!block)return;
+ const b=lastRun.blocks[Number(block.dataset.i)],tip=wrap.querySelector('.tape-tip');
  block.classList.add('active');
- tip.innerHTML='<b>'+esc(b.label.slice(0,90))+'</b> · '+chars(b.chars)+' · '+DECISION[b.decision][1];
- const box=wrap.getBoundingClientRect(),r=block.getBoundingClientRect();
+ tip.innerHTML='<b>'+esc(b.label.slice(0,90))+'</b><br>'+chars(b.chars)+' · '+DECISION[b.decision][1].toLowerCase();
  tip.hidden=false;
- const half=tip.offsetWidth/2,center=r.left-box.left+r.width/2;
- tip.style.left=Math.max(half,Math.min(box.width-half,center))+'px';
+ const area=wrap.getBoundingClientRect(),box=block.getBoundingClientRect(),half=tip.offsetWidth/2;
+ tip.style.left=Math.min(Math.max(box.left+box.width/2-area.left,half),area.width-half)+'px';
 });
-document.querySelector('#last-run').addEventListener('mouseleave',()=>{const wrap=document.querySelector('.tape-wrap');if(!wrap)return;wrap.querySelector('.tape-tip').hidden=true;wrap.querySelectorAll('.tape i.active').forEach(i=>i.classList.remove('active'))});
-function renderChart(runs){
- const completed=runs.filter(r=>r.status==='restored'&&r.charsBefore>0).slice(0,8);
- if(!completed.length)return '<div class="empty">Ainda não houve compactação com envio ao Codex.</div>';
- const max=Math.max(...completed.map(r=>r.charsBefore));
- return completed.map(r=>{
-  const line=(value,kind)=>'<div class="chart-line"><div class="bar-track"><i class="bar '+kind+'" style="width:'+Math.max(1,Math.min(100,value/max*100))+'%"></i></div><span class="chart-value">'+f(value)+'</span></div>';
-  return '<div class="chart-run"><span class="chart-time">'+time(r.at)+'</span><div class="chart-lines">'+line(r.charsBefore,'before')+line(r.charsAfter,'after')+'</div></div>';
- }).join('');
+$('#last-run').addEventListener('mouseleave',clearTape);
+
+function kpi(label,value,hint,accent){return '<div class="card kpi"><span class="label">'+label+'</span><span class="value'+(accent?' accent':'')+'">'+value+'</span><span class="hint">'+hint+'</span></div>'}
+function renderKpis(s){
+ const c=s.runStatusCounts||{},n=k=>c[k]||0;
+ const parts=[[n('restored'),'com envio','com envio'],[n('nothing_missing')+n('skipped')+n('too_short'),'não enviada','não enviadas'],[n('failed')+n('restore_failed'),'com erro','com erro'],[n('prepared')+n('ready'),'aguardando','aguardando']].filter(p=>p[0]>0).map(p=>plural(p[0],p[1],p[2]));
+ const seconds=s.averageSelectionMs/1000;
+ $('#kpis').innerHTML=[
+  kpi('Texto reduzido',s.restored?pct(s.completedReductionRatio):'—',s.restored?'nas '+plural(s.restored,'compactação','compactações')+' em que o Jev cortou':'ainda sem compactação concluída',true),
+  kpi('Compactações',f(s.attempts),parts.join(' · ')||'nenhuma ainda'),
+  kpi('Chamadas ao Jev',f(s.jevRequests),s.jevUsageReportedRequests?f(s.jevInputTokens)+' tokens de entrada':'o provedor não informou os tokens'),
+  kpi('Tempo do Jev',s.evaluatedSelections?seconds.toLocaleString('pt-BR',{maximumFractionDigits:1})+' s':'—','média por compactação')
+ ].join('');
 }
-function renderDecisions(byTool){
- const totals=byTool.reduce((sum,tool)=>({calls:sum.calls+tool.calls,kept:sum.kept+tool.kept,truncated:sum.truncated+tool.truncated,dropped:sum.dropped+tool.dropped}),{calls:0,kept:0,truncated:0,dropped:0});
- document.querySelector('#decision-caption').textContent=totals.calls?'Sobre '+f(totals.calls)+' comandos e leituras de arquivo nas compactações com envio ao Codex.':'Ainda não houve compactação com envio ao Codex.';
- if(!totals.calls)return '<div class="empty">Nenhuma decisão registrada ainda.</div>';
- return [['Inteiros',totals.kept],['Resumidos',totals.truncated],['Removidos',totals.dropped]].map(([label,count])=>'<div class="stat"><span>'+label+'</span><b>'+f(count)+' · '+pct(count/totals.calls)+'</b></div>').join('');
+function renderRuns(runs){
+ $('#runs').innerHTML=runs.slice(0,10).map(r=>{
+  const cut=r.status==='failed'||r.status==='too_short'||!r.charsBefore?'':'<i style="width:'+Math.max(0,Math.min(100,r.reductionRatio*100))+'%"></i>';
+  const sent=r.status==='restored'?f(r.injectedPayloadChars):r.status==='nothing_missing'?'0':'—';
+  return '<tr><td class="num">'+stamp(r.at)+'</td><td>'+statusPill(r)+'</td><td><div class="mini"'+(cut?' title="'+pct(r.reductionRatio)+' do texto cortado"':'')+'>'+cut+'</div></td><td class="num right">'+sent+'</td></tr>';
+ }).join('')||'<tr><td colspan="4" class="empty">Nenhuma compactação registrada ainda.</td></tr>';
 }
+let decisions=[],decisionFilter='all';
+function riskCell(d){
+ if(d.decision==='p')return '<span class="muted small">não avaliado</span>';
+ const risk=Math.round(Math.max(0,Math.min(1,Number(d.dropLoss)||0))*100);
+ return '<span class="risk"><span class="risk-bar"><i style="width:'+risk+'%"></i></span><span class="num">'+risk+'%</span></span>';
+}
+function renderDecisions(){
+ $('#decisions').innerHTML=decisions.filter(d=>decisionFilter==='all'||d.decision===decisionFilter).slice(0,50).map(d=>
+  '<tr><td class="num">'+shortStamp(d.at)+'</td><td><span class="cmd" title="'+esc(d.label)+'">'+esc(d.label)+'</span><span class="cmd-kind">'+esc(d.kind)+'</span></td><td>'+decisionPill(d.decision)+'</td><td>'+riskCell(d)+'</td><td class="num right">'+f(d.originalChars)+'</td><td class="num right">'+(d.removedChars?f(d.removedChars):'—')+'</td></tr>'
+ ).join('')||'<tr><td colspan="6" class="empty">Nenhuma decisão registrada ainda.</td></tr>';
+}
+$('.filters').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;decisionFilter=b.dataset.filter;document.querySelectorAll('.filters button').forEach(o=>o.setAttribute('aria-pressed',String(o===b)));renderDecisions()});
 function refresh(){
- return fetch('/api/stats',{cache:'no-store'}).then(response=>{if(!response.ok)throw Error('HTTP '+response.status);return response.json()}).then(s=>{
-  document.querySelector('#error').innerHTML='';
-  const completed=s.restored>0;
-  document.querySelector('#reduction').textContent=completed&&s.completedCharsBefore?pct(s.completedReductionRatio):'—';
-  document.querySelector('#reduction-bar').style.width=completed?Math.max(0,Math.min(100,s.completedReductionRatio*100))+'%':'0%';
-  document.querySelector('#removed').textContent=completed?chars(s.completedCharsRemoved)+' retirados':'Aguardando o primeiro envio ao Codex';
-  document.querySelector('#jev-requests').textContent=f(s.jevRequests);
-  document.querySelector('#attempts').textContent=f(s.attempts);
-  document.querySelector('#removed-count').textContent=completed?f(s.completedCharsRemoved):'—';
-  document.querySelector('#last-delivery').textContent=s.latestRestoredAt?time(s.latestRestoredAt):'—';
-  document.querySelector('#last-delivery-detail').textContent=s.latestRestoredAt?'Em '+new Date(s.latestRestoredAt).toLocaleDateString('pt-BR')+'.':'O jevcomp ainda não enviou texto ao Codex.';
-  const flowItems=[['Texto da conversa analisado',s.completedCharsBefore,'caracteres antes do corte'],['Texto guardado pelo Jev',s.completedCharsAfter,'caracteres depois do corte'],['Texto enviado ao Codex',s.injectedPayloadChars,'caracteres, dentro do limite configurado']];
-  document.querySelector('#flow').innerHTML=flowItems.map(item=>'<div class="flow-node"><span class="label">'+item[0]+'</span><strong>'+(completed?f(item[1]):'—')+'</strong><div class="detail">'+item[2]+'</div></div>').join('<span class="arrow">→</span>');
-  renderLastRun(s.lastCompaction);
-  document.querySelector('#rounds-chart').innerHTML=renderChart(s.runs);
-  document.querySelector('#decision-stats').innerHTML=renderDecisions(s.byTool);
-  const usage=s.jevUsageReportedRequests?f(s.jevUsageReportedRequests)+' de '+f(s.jevRequests)+' requisições com uso reportado':'Uso não reportado pelo provedor';
-   document.querySelector('#details').innerHTML=[
-    metric('Erros antes da compactação',f(s.nativeFallbacks),'o Codex fez o resumo normal'),
-    metric('Tokens de entrada Jev',s.jevUsageReportedRequests?f(s.jevInputTokens):'—',usage),
-    metric('Tokens de saída Jev',s.jevUsageReportedRequests?f(s.jevOutputTokens):'—',usage),
-    metric('Tempo médio do Jev',s.evaluatedSelections?f(s.averageSelectionMs)+' ms':'—','não inclui toda a compactação'),
-    metric('Duplicatas evitadas',s.nativePresentChars?chars(s.nativePresentChars):'—',s.verifiedMemberships?f(s.verifiedMemberships)+' restores conferidos após a compactação':'nenhum restore conferido ainda')
-   ].join('');
-  document.querySelector('#runs').innerHTML=s.runs.slice(0,50).map(r=>'<tr><td>'+when(r.at)+'</td><td>'+statusTag(r)+'</td><td>'+textAdditional(r)+'</td></tr>').join('')||'<tr><td colspan="3" class="empty">Nenhuma compactação registrada ainda.</td></tr>';
-  document.querySelector('#decisions').innerHTML=s.recentDecisions.slice(0,50).map(d=>'<tr><td>'+esc(d.tool)+'<div class="cell-note">'+when(d.at)+'</div></td><td>'+actionTag(d)+'</td><td><div class="preview" title="'+esc(d.inputPreview)+'">'+esc(d.inputPreview||'—')+'</div></td><td>'+pct(d.dropLoss)+' / '+pct(d.truncateLoss)+'</td><td class="num">'+chars(d.removedChars)+'</td></tr>').join('')||'<tr><td colspan="5" class="empty">Nenhuma decisão registrada ainda.</td></tr>';
-  document.querySelector('#live').textContent='dados locais · atualizado '+new Date().toLocaleTimeString('pt-BR');
+ return fetch('/api/stats',{cache:'no-store'}).then(r=>{if(!r.ok)throw Error('HTTP '+r.status);return r.json()}).then(s=>{
+  $('#error').innerHTML='';
+  renderLastRun(s.lastCompaction,s.runs[0]&&s.runs[0].at);
+  renderKpis(s);
+  renderRuns(s.runs);
+  decisions=s.recentDecisions;renderDecisions();
+  $('#live').textContent='dados locais · atualizado '+new Date().toLocaleTimeString('pt-BR');
  });
 }
-function showError(error){document.querySelector('#error').innerHTML='<div class="error">Erro ao ler dados: '+esc(String(error))+'</div>'}
+function showError(error){$('#error').innerHTML='<div class="error">Erro ao ler dados: '+esc(String(error))+'</div>'}
 refresh().catch(showError);
 setInterval(()=>refresh().catch(showError),5000);
-const token=document.querySelector('meta[name="jevcomp-token"]').content;
+
 const SETTING_TEXT={
  'restore-mode':{title:'Quanto texto enviar ao Codex',help:'Depois da compactação, o jevcomp envia ao Codex o que o resumo perdeu. Todo o texto: envia tudo, até o limite abaixo. Parte do texto: envia a lista e um trecho. Só a lista: envia apenas os nomes dos comandos e arquivos guardados e onde estão salvos no seu computador; o Codex abre o texto completo só se precisar.',label:v=>({preserve:'Todo o texto',balanced:'Parte do texto',minimal:'Só a lista'})[v]||v},
- 'restore-max-chars':{title:'Limite de texto enviado ao Codex',help:'O máximo de texto que o jevcomp envia ao Codex depois de cada compactação, em caracteres. Mais alto mantém mais detalhes, mas ocupa mais espaço na conversa.',label:v=>Number(v)===0?'Sem limite':f(Number(v)/1000)+' mil'},
- 'pin-recent-messages':{title:'Mensagens recentes que nunca são cortadas',help:'As mensagens mais novas ficam sempre inteiras. Mais alto é mais seguro; mais baixo deixa o jevcomp cortar mais.',label:v=>String(v)},
+ 'restore-max-chars':{title:'Limite de texto enviado ao Codex',help:'O máximo de texto que o jevcomp envia ao Codex depois de cada compactação, em caracteres. Mais alto mantém mais detalhes, mas ocupa mais espaço na conversa.',label:v=>Number(v)===0?'Sem limite':f(Number(v)/1000)+'k',numbers:true},
+ 'pin-recent-messages':{title:'Mensagens recentes que nunca são cortadas',help:'As mensagens mais novas ficam sempre inteiras. Mais alto é mais seguro; mais baixo deixa o jevcomp cortar mais.',label:v=>String(v),numbers:true},
  'loss-threshold':{title:'Quanto cortar',help:'O Jev estima o risco de cortar algo que o Codex ainda vai usar. Pouco: só corta o que tem risco baixo. Muito: corta mais.',label:v=>({0.3:'Pouco',0.5:'Normal',0.7:'Muito'})[Number(v)]||String(v)},
- 'min-reduction-ratio':{title:'Só agir se cortar pelo menos',help:'Se o corte diminuir o texto menos que isso, o jevcomp não faz nada naquela compactação.',label:v=>Math.round(Number(v)*100)+'%'}
+ 'min-reduction-ratio':{title:'Só agir se cortar pelo menos',help:'Se o corte diminuir o texto menos que isso, o jevcomp não faz nada naquela compactação.',label:v=>Math.round(Number(v)*100)+'%',numbers:true}
 };
 const PROVIDER_NAME={openrouter:'OpenRouter',typesafe:'TypeSafe'};
-let settingsState=null,keyTarget=null,toastTimer;
-function toast(text,bad){const el=document.querySelector('#toast');el.textContent=text;el.className='toast'+(bad?' bad':'');el.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>{el.hidden=true},2200)}
-function ago(iso){if(!iso)return null;const m=Math.round((Date.now()-new Date(iso).getTime())/60000);if(m<1)return 'agora';if(m<60)return 'há '+m+' min';const h=Math.round(m/60);return h<24?'há '+h+' h':when(iso)}
-function keyText(k){if(k.source==='none')return 'Nenhuma chave';const end=k.ending?'••••'+k.ending:'••••';return k.source==='environment'?end+' · da variável '+k.variable:end+' · salva neste computador'}
-const kv=(label,value)=>'<div class="kv"><span>'+label+'</span><b>'+value+'</b></div>';
+let settingsState=null,pendingProvider=null,changingKey=false;
+const info=(label,value)=>'<div class="info"><span>'+label+'</span><b>'+value+'</b></div>';
 const same=(a,b)=>String(a)===String(b)||(!Number.isNaN(Number(a))&&Number(a)===Number(b));
+function ago(iso){if(!iso)return null;const m=Math.round((Date.now()-date(iso).getTime())/60000);if(m<1)return 'agora';if(m<60)return 'há '+m+' min';const h=Math.round(m/60);return h<24?'há '+h+' h':stamp(iso)}
+function keyForm(name,withCancel){return '<form class="key-form" id="key-form"><label for="key-input" class="small muted">Chave '+name+'</label><input id="key-input" type="password" autocomplete="off" spellcheck="false"><div class="key-actions"><button class="btn primary" type="submit">Salvar chave</button>'+(withCancel?'<button class="btn" type="button" data-cancel>Cancelar</button>':'')+'</div></form>'}
+function renderConnection(){
+ const s=settingsState,shown=pendingProvider||s.provider,key=s.keys[shown],name=PROVIDER_NAME[shown],locked=!!s.providerLockedBy;
+ const seg='<div class="seg" role="group" aria-label="Provedor"'+(locked?' aria-disabled="true"':'')+'>'+Object.keys(PROVIDER_NAME).map(id=>'<button type="button" data-pick="'+id+'" aria-pressed="'+(id===shown)+'"'+(locked?' disabled':'')+'>'+PROVIDER_NAME[id]+'</button>').join('')+'</div>';
+ let body;
+ if(key.source==='none')body=info('Chave','<span class="none">Sem chave</span>')+'<p class="conn-note warn">O jevcomp fica parado até você salvar a chave do '+name+'.</p>'+keyForm(name,false);
+ else if(key.source==='environment')body=info('Chave','••••'+esc(key.ending||''))+'<p class="conn-note">Definida na variável '+esc(key.variable)+' '+SYSTEM+'. Para trocar, mude a variável e reinicie o Codex.</p>';
+ else body=info('Chave','••••'+esc(key.ending||'')+' · salva neste computador')+(changingKey?keyForm(name,true):'<div class="key-actions"><button class="btn" type="button" data-change>Trocar chave</button></div>');
+ const last=s.lastJev?(s.lastJev.ok?'Funcionou · ':'Falhou · ')+ago(s.lastJev.at):'Ainda nenhum';
+ const lockNote=locked?'<p class="note" style="margin-top:10px">Definido pela variável '+esc(s.providerLockedBy)+' no seu sistema.</p>':'';
+ $('#connection').innerHTML=seg+lockNote+'<div class="conn-body">'+body+(key.source==='none'||shown!==s.provider?'':info('Último uso do Jev',esc(last)))+'</div>';
+}
 function renderSettings(s){
  settingsState=s;
- document.querySelectorAll('#provider-seg button').forEach(b=>{b.setAttribute('aria-pressed',String(b.dataset.provider===s.provider));b.disabled=!!s.providerLockedBy});
- document.querySelector('#provider-note').innerHTML=s.providerLockedBy?'<p class="note">Definido pela variável '+esc(s.providerLockedBy)+' no seu sistema.</p>':'';
- const key=s.keys[s.provider];
- const last=s.lastJev?(s.lastJev.ok?'Funcionou · '+when(s.lastJev.at):'Falhou · '+when(s.lastJev.at)):'Ainda nenhuma';
- document.querySelector('#connection').innerHTML=kv('Chave '+PROVIDER_NAME[s.provider],esc(keyText(key)))+kv('Última chamada ao Jev',esc(last))+(key.source==='environment'?'<p class="note">A variável '+esc(key.variable)+' do seu sistema tem prioridade sobre uma chave salva aqui.</p>':'');
- document.querySelector('#change-key').textContent=key.source==='none'?'Adicionar chave':'Trocar chave';
+ renderConnection();
  const latest=Object.values(s.hooks.activity||{}).sort().pop();
- const hooksTag=s.hooks.installed>=s.hooks.total?'tag success':'tag fallback';
- document.querySelector('#codex-info').innerHTML=kv('Instalação',(s.installation.kind==='plugin'?'Plugin do Codex':'Comando jevcomp')+' · '+esc(s.installation.version))
-  +kv('Hooks','<span class="'+hooksTag+'">'+s.hooks.installed+' de '+s.hooks.total+' instalados</span>')
-  +kv('Último sinal dos hooks',latest?esc(ago(latest)):'Ainda nenhum')
-  +kv('Dashboard',esc(s.dashboardUrl));
- document.querySelector('#behavior').innerHTML=s.settings.map(item=>{
+ $('#codex-info').innerHTML=info('Instalação',(s.installation.kind==='plugin'?'Plugin do Codex':'Comando jevcomp')+' · '+esc(s.installation.version))
+  +'<div class="info"><span>Hooks</span><span class="pill '+(s.hooks.installed>=s.hooks.total?'ok':'fail')+'">'+s.hooks.installed+' de '+s.hooks.total+' instalados</span></div>'
+  +info('Último sinal dos hooks',latest?esc(ago(latest)):'Ainda nenhum')
+  +'<div class="info"><span>Dashboard</span><b class="num">'+esc(s.dashboardUrl)+'</b></div>';
+ $('#behavior').innerHTML=s.settings.map(item=>{
   const text=SETTING_TEXT[item.name];
   const choices=item.choices.some(c=>same(c,item.value))?item.choices:item.choices.concat([item.value]);
-  const buttons=choices.map(c=>'<button type="button" data-value="'+esc(c)+'" aria-pressed="'+same(c,item.value)+'"'+(item.lockedBy?' disabled':'')+'>'+esc(text.label(c))+'</button>').join('');
-  const locked=item.lockedBy?'<span class="locked">Definido pela variável '+esc(item.lockedBy)+' no seu sistema. Remova a variável para mudar aqui.</span>':'';
-  return '<div class="row"><h3>'+text.title+'</h3><p>'+text.help+'</p><div class="control seg" role="group" aria-label="'+text.title+'" data-name="'+item.name+'">'+buttons+'</div>'+locked+'</div>';
+  const locked=!!item.lockedBy;
+  const buttons=choices.map(c=>'<button type="button" data-value="'+esc(c)+'" aria-pressed="'+same(c,item.value)+'"'+(locked?' disabled':'')+'>'+esc(text.label(c))+'</button>').join('');
+  const note=locked?'<span class="note">Definido pela variável '+esc(item.lockedBy)+' no seu sistema. Remova a variável para mudar aqui.</span>':'';
+  return '<div class="setting"><h3>'+text.title+'</h3><p>'+text.help+'</p><div class="control seg'+(text.numbers?' numbers':'')+'" role="group" aria-label="'+text.title+'" data-name="'+item.name+'"'+(locked?' aria-disabled="true"':'')+'>'+buttons+'</div>'+note+'</div>';
  }).join('');
 }
 function loadSettings(){return fetch('/api/settings',{cache:'no-store'}).then(r=>r.json()).then(renderSettings).catch(e=>toast('Erro ao ler as configurações: '+e.message,true))}
 function send(body,message){return fetch('/api/settings',{method:'POST',headers:{'content-type':'application/json','x-jevcomp-token':token},body:JSON.stringify(body)}).then(r=>r.json().then(j=>{if(!r.ok)throw Error(j.error||'HTTP '+r.status);return j})).then(s=>{renderSettings(s);toast(message||'Salvo');return true}).catch(e=>{toast('Não salvo: '+e.message,true);return false})}
-function openKeyForm(provider){keyTarget=provider;document.querySelector('#key-label').textContent='Chave '+PROVIDER_NAME[provider];document.querySelector('#key-input').value='';document.querySelector('#key-form').hidden=false;document.querySelector('#key-input').focus()}
-document.querySelector('#provider-seg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b||b.disabled||!settingsState)return;const p=b.dataset.provider;if(p===settingsState.provider)return;if(settingsState.keys[p].source==='none'){openKeyForm(p);return}send({action:'provider',provider:p},'Agora usando '+PROVIDER_NAME[p])});
-document.querySelector('#change-key').addEventListener('click',()=>{if(settingsState)openKeyForm(settingsState.provider)});
-document.querySelector('#cancel-key').addEventListener('click',()=>{document.querySelector('#key-form').hidden=true});
-document.querySelector('#key-form').addEventListener('submit',e=>{e.preventDefault();const input=document.querySelector('#key-input');const key=input.value.trim();if(!key){toast('Cole a chave antes de salvar.',true);return}send({action:'key',provider:keyTarget,key},'Chave salva').then(ok=>{if(ok){document.querySelector('#key-form').hidden=true;input.value=''}})});
-document.querySelector('#behavior').addEventListener('click',e=>{const b=e.target.closest('button');if(!b||b.disabled)return;send({action:'setting',name:b.closest('.seg').dataset.name,value:b.dataset.value})});
-function showReset(){const area=document.querySelector('#reset-area');area.innerHTML='<button class="btn danger" type="button" id="reset">Restaurar padrões</button>';document.querySelector('#reset').addEventListener('click',()=>{area.innerHTML='<span class="muted">Voltar as opções acima ao padrão? Provedor e chave continuam como estão.</span><button class="btn danger" type="button" id="reset-yes">Restaurar</button><button class="btn" type="button" id="reset-no">Cancelar</button>';document.querySelector('#reset-yes').addEventListener('click',()=>send({action:'reset'},'Padrões restaurados').then(showReset));document.querySelector('#reset-no').addEventListener('click',showReset)})}
+$('#connection').addEventListener('click',e=>{
+ if(!settingsState)return;
+ if(e.target.closest('[data-change]')){changingKey=true;renderConnection();$('#key-input').focus();return}
+ if(e.target.closest('[data-cancel]')){changingKey=false;renderConnection();return}
+ const pick=e.target.closest('[data-pick]');
+ if(!pick||pick.disabled)return;
+ const id=pick.dataset.pick;
+ if(id===(pendingProvider||settingsState.provider))return;
+ changingKey=false;
+ if(settingsState.keys[id].source==='none'){pendingProvider=id;renderConnection();$('#key-input').focus();return}
+ pendingProvider=null;
+ send({action:'provider',provider:id},'Agora usando '+PROVIDER_NAME[id]);
+});
+$('#connection').addEventListener('submit',e=>{
+ e.preventDefault();
+ const provider=pendingProvider||settingsState.provider,key=$('#key-input').value.trim();
+ if(!key){toast('Cole a chave antes de salvar',true);return}
+ const switching=provider!==settingsState.provider;
+ pendingProvider=null;changingKey=false;
+ send({action:'key',provider,key},switching?'Chave salva. Agora usando '+PROVIDER_NAME[provider]:'Chave salva');
+});
+$('#behavior').addEventListener('click',e=>{const b=e.target.closest('button');if(!b||b.disabled)return;send({action:'setting',name:b.closest('.seg').dataset.name,value:b.dataset.value})});
+function showReset(){
+ const area=$('#reset-area .control');
+ area.innerHTML='<button class="btn quiet" type="button" id="reset">Restaurar padrões</button>';
+ $('#reset').addEventListener('click',()=>{
+  area.innerHTML='<div class="confirm">Tem certeza? <button class="btn quiet" type="button" id="reset-yes">Restaurar</button><button class="btn" type="button" id="reset-no">Cancelar</button></div>';
+  $('#reset-yes').addEventListener('click',()=>send({action:'reset'},'Padrões restaurados').then(showReset));
+  $('#reset-no').addEventListener('click',showReset);
+ });
+}
 showReset();
-function showTab(name){document.querySelectorAll('.tab').forEach(t=>{const on=t.id==='tab-'+name;t.setAttribute('aria-selected',String(on));document.getElementById(t.getAttribute('aria-controls')).hidden=!on});if(name==='config')loadSettings();history.replaceState(null,'',name==='config'?'#configuracoes':'#resumo')}
-document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>showTab(t.id.slice(4))));
-showTab(location.hash==='#configuracoes'?'config':'resumo');
-setInterval(()=>{if(!document.querySelector('#view-config').hidden&&document.querySelector('#key-form').hidden)loadSettings()},15000);
+function showTab(name){document.querySelectorAll('.nav button').forEach(t=>{const on=t.id==='nav-'+name;t.setAttribute('aria-selected',String(on));document.getElementById(t.getAttribute('aria-controls')).hidden=!on});if(name==='config')loadSettings();history.replaceState(null,'',name==='config'?'#configuracoes':'#resumo')}
+document.querySelectorAll('.nav button').forEach(t=>t.addEventListener('click',()=>showTab(t.id.slice(4))));
+showTab(location.hash==='#configuracoes'?'config':'geral');
+setInterval(()=>{if(!$('#view-config').hidden&&!$('#key-form'))loadSettings()},15000);
 </script></body></html>`;
 }
 async function jsonBody(req) {
@@ -578,7 +628,7 @@ export async function startDashboard(port = 43127, env = process.env) {
             if (url.pathname !== '/')
                 return json(res, { error: 'not found' }, 404);
             res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-            res.end(page(token));
+            res.end(page(token, process.platform));
         }
         catch (error) {
             json(res, { error: error instanceof Error ? error.message : String(error) }, 500);

@@ -45,18 +45,16 @@ test('dashboard reports measured impact without invented token-savings estimates
   assert.equal('estimatedPrunedTokens' in s, false);
   assert.equal(s.lastCompaction.at, '2026-09-22T12:02:30.000Z');
   assert.equal(s.lastCompaction.status, 'prepared');
-  assert.deepEqual(s.lastCompaction.blocks.map((b) => [b.decision, b.chars, b.label]), [['drop', 4100, 'q=x'], ['short', 2250, 'a.ts'], ['kept', 1010, 'test']]);
+  assert.deepEqual(s.lastCompaction.blocks.map((b) => [b.decision, b.chars, b.label]), [['r', 4100, 'q=x'], ['s', 2250, 'a.ts'], ['k', 1010, 'test']]);
+  assert.deepEqual(s.runStatusCounts, { prepared: 1, restored: 1, skipped: 1, failed: 1 });
+  assert.equal(s.recentDecisions[0].decision, 'k');
 
   const dashboard = await startDashboard(0, env);
   t.after(() => dashboard.server.close());
   const html = await fetch(dashboard.url).then((r) => r.text());
-  assert.match(html, /Quanto texto foi reduzido\?/);
-  assert.match(html, /Última compactação/);
-  assert.match(html, /Decisões de retenção/);
-  assert.match(html, /Duplicatas evitadas/);
+  for (const section of ['Última compactação', 'Compactações recentes', 'Decisões recentes', 'Risco se descartar', 'Conexão', 'Comportamento']) assert.match(html, new RegExp(section));
+  for (const old of ['Quanto texto foi reduzido', 'Decisões de retenção', 'Duplicatas evitadas', 'De onde vem essa redução']) assert.doesNotMatch(html, new RegExp(old));
   assert.doesNotMatch(html, /observe/i);
-  assert.match(html, /não.*tokens.*Codex/i);
-  assert.match(html, /Removido: ficou de fora/);
   assert.match(html, /color-scheme:dark/);
   assert.doesNotMatch(html, /estimated tokens saved/i);
   const health = await fetch(`${dashboard.url}api/health`).then((r) => r.json());
@@ -113,7 +111,10 @@ test('last compaction names each block by its command, even from a cut preview',
     block('exec_command', '{"cmd":"git diff -- src \\"a b\\"","workdir":"C:\\x'),
     block('exec', 'const result = await tools.exec_command({ cmd: "npm test", yield_time_ms'),
     block('read', ''),
+    block('exec_command', '{"cmd":"Get-Content src/a.ts"}'),
+    block('exec_command', '{"cmd":"rg restore tests"}'),
   ] }, env);
   const s = await stats(env);
-  assert.deepEqual(s.lastCompaction.blocks.map((b) => b.label), ['git diff -- src "a b"', 'npm test', 'read']);
+  assert.deepEqual(s.lastCompaction.blocks.map((b) => b.label), ['git diff -- src "a b"', 'npm test', 'read', 'Get-Content src/a.ts', 'rg restore tests']);
+  assert.deepEqual(s.recentDecisions.map((d) => d.kind).reverse(), ['comando', 'comando', 'leitura de arquivo', 'leitura de arquivo', 'busca']);
 });
