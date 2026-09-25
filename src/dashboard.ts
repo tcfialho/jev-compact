@@ -326,7 +326,7 @@ footer{color:var(--muted);font-size:11px;margin-top:18px}
 <section class="panel flow-panel"><h2>De onde vem essa redução?</h2><p class="sub">O Jev escolhe o que guardar da conversa para o Codex continuar depois da compactação.</p><div class="flow" id="flow"></div><details><summary>Por que os dois últimos números são diferentes?</summary><p>O Jev primeiro guarda o que importa; depois o jevcomp envia ao Codex só o que o resumo perdeu, dentro do limite configurado.</p></details></section>
 <section class="section pair">
  <div class="panel"><h2>Texto por compactação</h2><p class="sub">Antes e depois do corte, em caracteres, nas compactações com envio ao Codex.</p><div class="bar-key"><span><i class="swatch before"></i>Antes</span><span><i class="swatch after"></i>Depois</span></div><div id="rounds-chart"></div></div>
- <div class="panel"><h2>Decisões de retenção</h2><p class="sub" id="decision-caption">Nas compactações com envio ao Codex.</p><div id="decision-stats"></div><details><summary>Entenda estas decisões</summary><p>Guardado inteiro mantém o comando e toda a saída. Guardado encurtado mantém o começo da saída. Descartado fica de fora do que o Jev guarda. Mensagens recentes nunca são cortadas e não entram nesses percentuais.</p></details></div>
+ <div class="panel"><h2>Decisões de retenção</h2><p class="sub" id="decision-caption">Nas compactações com envio ao Codex.</p><div id="decision-stats"></div><details><summary>Entenda estas decisões</summary><p>Inteiro: o comando e toda a saída foram guardados. Resumido: só o início da saída foi guardado. Removido: ficou de fora; o Codex pode rodar o comando de novo se precisar. Recente: as mensagens mais novas nunca são cortadas.</p></details></div>
 </section>
 <section class="section"><div class="section-heading"><h2>Detalhes da integração</h2><p class="sub">Informações adicionais registradas pelos hooks locais.</p></div><div class="detail-grid" id="details"></div></section>
 <section class="section"><div class="section-heading"><h2>Compactações recentes</h2><p class="sub">O que aconteceu em cada compactação.</p></div><div class="panel table-panel"><table><thead><tr><th>Quando</th><th>Resultado</th><th>Texto enviado ao Codex</th></tr></thead><tbody id="runs"></tbody></table></div></section>
@@ -365,8 +365,8 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const when=s=>{const d=new Date(s);return Number.isNaN(d.getTime())?'—':d.toLocaleString('pt-BR')};
 const time=s=>{const d=new Date(s);return Number.isNaN(d.getTime())?'—':d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})};
 const metric=(label,number,detail)=>'<div class="metric"><span class="metric-label">'+label+'</span><strong class="metric-number">'+number+'</strong><span class="metric-detail">'+detail+'</span></div>';
-const actionTag=d=>d.pinned?'<span class="tag protected">Recente, não cortado</span>':d.action==='drop_call'?'<span class="tag neutral">Descartado</span>':d.action==='truncate_result'?'<span class="tag pending">Guardado encurtado</span>':'<span class="tag success">Guardado inteiro</span>';
- const statusTag=status=>status==='restored'?'<span class="tag success">Enviado ao Codex</span>':status==='nothing_missing'?'<span class="tag neutral">Nada a enviar: o resumo já tinha tudo</span>':status==='too_short'?'<span class="tag neutral">Não enviado: conversa curta</span>':status==='failed'?'<span class="tag fallback">Codex compactou sem o jevcomp</span>':status==='restore_failed'?'<span class="tag fallback">Falha ao enviar</span>':status==='skipped'?'<span class="tag neutral">Não enviado: corte pequeno</span>':status==='ready'?'<span class="tag pending">Aguardando envio</span>':'<span class="tag pending">Aguardando a compactação</span>';
+const actionTag=d=>d.pinned?'<span class="tag protected">Recente</span>':d.action==='drop_call'?'<span class="tag neutral">Removido</span>':d.action==='truncate_result'?'<span class="tag pending">Resumido</span>':'<span class="tag success">Inteiro</span>';
+ const statusTag=status=>status==='restored'?'<span class="tag success">Enviado ao Codex</span>':status==='nothing_missing'?'<span class="tag neutral">Nada a enviar: o resumo já tinha tudo</span>':status==='too_short'?'<span class="tag neutral">Não enviado: conversa curta</span>':status==='failed'?'<span class="tag fallback">Não enviado: erro antes da compactação</span>':status==='restore_failed'?'<span class="tag fallback">Falha ao enviar</span>':status==='skipped'?'<span class="tag neutral">Não enviado: corte pequeno</span>':status==='ready'?'<span class="tag pending">Aguardando envio</span>':'<span class="tag pending">Aguardando a compactação</span>';
  const textAdditional=r=>r.status==='restored'?chars(r.injectedPayloadChars):r.status==='nothing_missing'?'0 caracteres':r.status==='prepared'||r.status==='ready'?'Aguardando':'Não enviado';
 function renderChart(runs){
  const completed=runs.filter(r=>r.status==='restored'&&r.charsBefore>0).slice(0,8);
@@ -381,7 +381,7 @@ function renderDecisions(byTool){
  const totals=byTool.reduce((sum,tool)=>({calls:sum.calls+tool.calls,kept:sum.kept+tool.kept,truncated:sum.truncated+tool.truncated,dropped:sum.dropped+tool.dropped}),{calls:0,kept:0,truncated:0,dropped:0});
  document.querySelector('#decision-caption').textContent=totals.calls?'Sobre '+f(totals.calls)+' comandos e leituras de arquivo nas compactações com envio ao Codex.':'Ainda não houve compactação com envio ao Codex.';
  if(!totals.calls)return '<div class="empty">Nenhuma decisão registrada ainda.</div>';
- return [['Guardados inteiros',totals.kept],['Guardados encurtados',totals.truncated],['Descartados',totals.dropped]].map(([label,count])=>'<div class="stat"><span>'+label+'</span><b>'+f(count)+' · '+pct(count/totals.calls)+'</b></div>').join('');
+ return [['Inteiros',totals.kept],['Resumidos',totals.truncated],['Removidos',totals.dropped]].map(([label,count])=>'<div class="stat"><span>'+label+'</span><b>'+f(count)+' · '+pct(count/totals.calls)+'</b></div>').join('');
 }
 function refresh(){
  return fetch('/api/stats',{cache:'no-store'}).then(response=>{if(!response.ok)throw Error('HTTP '+response.status);return response.json()}).then(s=>{
@@ -401,7 +401,7 @@ function refresh(){
   document.querySelector('#decision-stats').innerHTML=renderDecisions(s.byTool);
   const usage=s.jevUsageReportedRequests?f(s.jevUsageReportedRequests)+' de '+f(s.jevRequests)+' requisições com uso reportado':'Uso não reportado pelo provedor';
    document.querySelector('#details').innerHTML=[
-    metric('Codex compactou sem o jevcomp',f(s.nativeFallbacks),'compactação nativa após falha do Jev'),
+    metric('Não enviado: erro antes da compactação',f(s.nativeFallbacks),'compactação nativa após falha do Jev'),
     metric('Tokens de entrada Jev',s.jevUsageReportedRequests?f(s.jevInputTokens):'—',usage),
     metric('Tokens de saída Jev',s.jevUsageReportedRequests?f(s.jevOutputTokens):'—',usage),
     metric('Tempo médio do Jev',s.evaluatedSelections?f(s.averageSelectionMs)+' ms':'—','não inclui toda a compactação'),
