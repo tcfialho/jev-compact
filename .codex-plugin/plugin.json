@@ -5,8 +5,8 @@
   "author": {
     "name": "jevcomp contributors"
   },
-  "homepage": "https://github.com/tcfialho/jevcomp",
-  "repository": "https://github.com/tcfialho/jevcomp",
+  "homepage": "https://github.com/jevcomp/jevcomp",
+  "repository": "https://github.com/jevcomp/jevcomp",
   "license": "MIT",
   "keywords": [
     "codex",
@@ -22,7 +22,7 @@
     "longDescription": "Uses Jev to select useful history before Codex compaction and restore exact missing evidence. Requires an OpenRouter or TypeSafe API key; configure it after installation.",
     "developerName": "jevcomp contributors",
     "category": "Productivity",
-    "websiteURL": "https://github.com/tcfialho/jevcomp",
+    "websiteURL": "https://github.com/jevcomp/jevcomp",
     "capabilities": [
       "hooks"
     ],

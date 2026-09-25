@@ -32,7 +32,7 @@ Used the old name `jev-compact`? Install `jevcomp` the same way. Your saved key,
 In a terminal:
 
 ```bash
-codex plugin marketplace add tcfialho/jevcomp
+codex plugin marketplace add jevcomp/jevcomp
 codex plugin add jevcomp@jevcomp
 ```
 
@@ -44,7 +44,7 @@ Then, in Codex:
 ### Option 2: npm (also gives you the `jevcomp` terminal command)
 
 ```bash
-npm install -g --install-links github:tcfialho/jevcomp
+npm install -g --install-links github:jevcomp/jevcomp
 jevcomp install
 ```
 

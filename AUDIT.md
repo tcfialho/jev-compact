@@ -67,7 +67,7 @@ Current Codex command hooks give `PreCompact` control over continue/stop, not a 
 | Manual compact + JSON/context outputs | generic CLI | yes | yes | restored in 0.2 |
 | Skill docs | no | yes | yes | restored in 0.2 |
 | Valid plugin author metadata | yes | yes | yes | fixed in 0.2 |
-| Marketplace manifest | repo-specific URL | valid published URL | yes, `tcfialho/jevcomp` | real repository URL |
+| Marketplace manifest | repo-specific URL | valid published URL | yes, `jevcomp/jevcomp` | real repository URL |
 | Claude/OpenCode/OpenAI generic adapters | yes | no | no | intentionally out of Codex-focused runtime scope |
 | Exact post-compaction membership/dedupe before restore | no | no | yes (0.5) | avoids reinjecting selected evidence already present verbatim |
 | Observe/shadow mode with no context mutation | no | no | removed in 0.6.3 | added in 0.5; see the 0.6.3 entry |
@@ -84,7 +84,7 @@ Current Codex command hooks give `PreCompact` control over continue/stop, not a 
 
 ### Marketplace placeholder
 
-A local package cannot honestly contain a Git marketplace URL until a real repository exists. The previous `YOUR_ORG` manifest was removed. The repository is now published and `.agents/plugins/marketplace.json` points to `tcfialho/jevcomp`; `jevcomp install` is the npm installation path.
+A local package cannot honestly contain a Git marketplace URL until a real repository exists. The previous `YOUR_ORG` manifest was removed. The repository is now published as `jevcomp/jevcomp` and carries `.agents/plugins/marketplace.json`; `jevcomp install` is the npm installation path.
 
 ## Current restore default
 
