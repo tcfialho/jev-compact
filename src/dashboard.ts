@@ -352,6 +352,7 @@ th{font-size:11px;color:var(--muted);font-weight:500;text-align:left;padding:0 1
 td{padding:11px 10px;border-top:1px solid var(--line);vertical-align:middle}
 .mini{display:flex;height:6px;width:140px;border-radius:3px;overflow:hidden;background:var(--raised)}
 .mini i{display:block;background:var(--accent)}
+.cut{display:flex;align-items:center;gap:12px}.cut-text{font-size:12px;color:var(--muted);white-space:nowrap}.cut-text b{color:var(--text);font-weight:600}
 .decisions-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
 .filters button{font-size:12px;padding:5px 11px}
 .cmd{font-family:var(--mono);font-size:12.5px;display:block;max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cmd-kind{display:block;font-size:11px;color:var(--muted);margin-top:2px}
@@ -400,7 +401,7 @@ td{padding:11px 10px;border-top:1px solid var(--line);vertical-align:middle}
   <section class="view" id="view-geral" role="tabpanel" aria-labelledby="nav-geral">
    <div class="card"><div class="tape-head"><h2 id="last-title">Última compactação</h2><div class="chips" id="last-legend"></div></div><div id="last-run"></div></div>
    <div class="kpis" id="kpis"></div>
-   <div class="card"><h2>Compactações recentes</h2><div class="table" style="margin-top:12px"><table><thead><tr><th>Quando</th><th>Resultado</th><th>Corte</th><th class="right">Enviado ao Codex</th></tr></thead><tbody id="runs"></tbody></table></div></div>
+   <div class="card"><h2>Compactações recentes</h2><div class="table" style="margin-top:12px"><table><thead><tr><th>Quando</th><th>Resultado</th><th>Texto antes → depois do corte</th><th class="right">Enviado ao Codex</th></tr></thead><tbody id="runs"></tbody></table></div></div>
    <div class="card">
     <div class="decisions-head"><div><h2>Decisões recentes</h2><p class="small muted" style="margin-top:4px">O que o Jev fez com cada comando e leitura de arquivo, da mais nova para a mais antiga.</p></div>
      <div class="seg filters" role="group" aria-label="Filtrar decisões"><button type="button" data-filter="all" aria-pressed="true">Todas</button><button type="button" data-filter="k" aria-pressed="false">Inteiros</button><button type="button" data-filter="s" aria-pressed="false">Resumidos</button><button type="button" data-filter="r" aria-pressed="false">Removidos</button></div></div>
@@ -486,19 +487,20 @@ function kpi(label,value,hint,accent){return '<div class="card kpi"><span class=
 function renderKpis(s){
  const c=s.runStatusCounts||{},n=k=>c[k]||0;
  const parts=[[n('restored'),'com envio','com envio'],[n('nothing_missing')+n('skipped')+n('too_short'),'não enviada','não enviadas'],[n('failed')+n('restore_failed'),'com erro','com erro'],[n('prepared')+n('ready'),'aguardando','aguardando']].filter(p=>p[0]>0).map(p=>plural(p[0],p[1],p[2]));
- const seconds=s.averageSelectionMs/1000;
  $('#kpis').innerHTML=[
   kpi('Texto reduzido',s.restored?pct(s.completedReductionRatio):'—',s.restored?'nas '+plural(s.restored,'compactação','compactações')+' em que o Jev cortou':'ainda sem compactação concluída',true),
   kpi('Compactações',f(s.attempts),parts.join(' · ')||'nenhuma ainda'),
   kpi('Chamadas ao Jev',f(s.jevRequests),s.jevUsageReportedRequests?f(s.jevInputTokens)+' tokens de entrada':'o provedor não informou os tokens'),
-  kpi('Tempo do Jev',s.evaluatedSelections?seconds.toLocaleString('pt-BR',{maximumFractionDigits:1})+' s':'—','média por compactação')
+  kpi('Texto retirado',s.restored?f(s.completedCharsRemoved):'—','caracteres que o Codex deixou de carregar a cada nova mensagem')
  ].join('');
 }
 function renderRuns(runs){
  $('#runs').innerHTML=runs.slice(0,10).map(r=>{
-  const cut=r.status==='failed'||r.status==='too_short'||!r.charsBefore?'':'<i style="width:'+Math.max(0,Math.min(100,r.reductionRatio*100))+'%"></i>';
+  const failed=r.status==='failed'||r.status==='too_short'||!r.charsBefore,skipped=r.status==='skipped';
+  const cut=failed||skipped?'':'<i style="width:'+Math.max(0,Math.min(100,r.reductionRatio*100))+'%"></i>';
+  const text=failed?'—':skipped?'<b>'+f(r.charsBefore)+'</b> · sem corte':'<b>'+f(r.charsBefore)+'</b> → <b>'+f(r.charsAfter)+'</b>';
   const sent=r.status==='restored'?f(r.injectedPayloadChars):r.status==='nothing_missing'?'0':'—';
-  return '<tr><td class="num">'+stamp(r.at)+'</td><td>'+statusPill(r)+'</td><td><div class="mini"'+(cut?' title="'+pct(r.reductionRatio)+' do texto cortado"':'')+'>'+cut+'</div></td><td class="num right">'+sent+'</td></tr>';
+  return '<tr><td class="num">'+stamp(r.at)+'</td><td>'+statusPill(r)+'</td><td><div class="cut"><div class="mini"'+(cut?' title="'+pct(r.reductionRatio)+' do texto cortado"':'')+'>'+cut+'</div><span class="cut-text num">'+text+'</span></div></td><td class="num right">'+sent+'</td></tr>';
  }).join('')||'<tr><td colspan="4" class="empty">Nenhuma compactação registrada ainda.</td></tr>';
 }
 let decisions=[],decisionFilter='all';

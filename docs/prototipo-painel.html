@@ -148,6 +148,7 @@ table.decisions td{vertical-align:middle}
 @media (prefers-reduced-motion:reduce){.meter-row .bar i{transition:none}}
 @media (max-width:1000px){.settings{grid-template-columns:1fr}.effect{position:static}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:760px){.shell{padding-inline:16px}.setting{grid-template-columns:1fr}.setting .control{grid-column:1;grid-row:auto;justify-self:start}.group{padding-inline:16px}}
+.cut{display:flex;align-items:center;gap:12px}.cut-text{font-size:12px;color:var(--muted);white-space:nowrap}.cut-text b{color:var(--text);font-weight:600}
 </style>
 
 <div class="shell">
@@ -172,19 +173,19 @@ table.decisions td{vertical-align:middle}
     <div class="card kpi"><span class="label">Texto reduzido</span><span class="value accent">68,4%</span><span class="hint">nas 9 compactações com envio ao Codex</span></div>
     <div class="card kpi"><span class="label">Compactações</span><span class="value">14</span><span class="hint">9 com envio · 3 não enviadas · 2 com erro</span></div>
     <div class="card kpi"><span class="label">Chamadas ao Jev</span><span class="value">23</span><span class="hint">186.420 tokens de entrada</span></div>
-    <div class="card kpi"><span class="label">Tempo do Jev</span><span class="value">1,8 s</span><span class="hint">média por compactação</span></div>
+    <div class="card kpi"><span class="label">Texto retirado</span><span class="value">412.300</span><span class="hint">caracteres que o Codex deixou de carregar a cada nova mensagem</span></div>
    </div>
 
    <div class="card">
     <h2>Compactações recentes</h2>
     <div class="table" style="margin-top:12px"><table>
-     <thead><tr><th>Quando</th><th>Resultado</th><th>Corte</th><th style="text-align:right">Enviado ao Codex</th></tr></thead>
+     <thead><tr><th>Quando</th><th>Resultado</th><th>Texto antes → depois do corte</th><th style="text-align:right">Enviado ao Codex</th></tr></thead>
      <tbody>
-      <tr><td class="num">24/09 20:48</td><td><span class="pill ok">Enviado ao Codex</span></td><td><div class="mini"><i style="width:71%"></i></div></td><td class="num" style="text-align:right">21.400</td></tr>
-      <tr><td class="num">24/09 18:12</td><td><span class="pill ok">Enviado ao Codex</span></td><td><div class="mini"><i style="width:61%"></i></div></td><td class="num" style="text-align:right">19.870</td></tr>
-      <tr><td class="num">24/09 17:20</td><td><span class="pill skip">Não enviado: resumo já completo</span></td><td><div class="mini"><i style="width:48%"></i></div></td><td class="num" style="text-align:right">0</td></tr>
-      <tr><td class="num">24/09 16:05</td><td><span class="pill skip">Não enviado: pouco a cortar</span></td><td><div class="mini"><i style="width:9%"></i></div></td><td class="num" style="text-align:right">—</td></tr>
-      <tr><td class="num">24/09 15:37</td><td><span class="pill fail">Não enviado: erro</span></td><td><div class="mini"></div></td><td class="num" style="text-align:right">—</td></tr>
+      <tr><td class="num">24/09 20:48</td><td><span class="pill ok">Enviado ao Codex</span></td><td><div class="cut"><div class="mini"><i style="width:71%"></i></div><span class="cut-text num"><b>96.410</b> → <b>27.880</b></span></div></td><td class="num" style="text-align:right">21.400</td></tr>
+      <tr><td class="num">24/09 18:12</td><td><span class="pill ok">Enviado ao Codex</span></td><td><div class="cut"><div class="mini"><i style="width:61%"></i></div><span class="cut-text num"><b>80.990</b> → <b>31.620</b></span></div></td><td class="num" style="text-align:right">19.870</td></tr>
+      <tr><td class="num">24/09 17:20</td><td><span class="pill skip">Não enviado: resumo já completo</span></td><td><div class="cut"><div class="mini"><i style="width:48%"></i></div><span class="cut-text num"><b>58.700</b> → <b>30.520</b></span></div></td><td class="num" style="text-align:right">0</td></tr>
+      <tr><td class="num">24/09 16:05</td><td><span class="pill skip">Não enviado: pouco a cortar</span></td><td><div class="cut"><div class="mini"><i style="width:9%"></i></div><span class="cut-text num"><b>40.200</b> · sem corte</span></div></td><td class="num" style="text-align:right">—</td></tr>
+      <tr><td class="num">24/09 15:37</td><td><span class="pill fail">Não enviado: erro</span></td><td><div class="cut"><div class="mini"></div><span class="cut-text">—</span></div></td><td class="num" style="text-align:right">—</td></tr>
      </tbody></table></div>
    </div>
 
