@@ -1,6 +1,6 @@
 {
   "name": "jevcomp",
-  "version": "0.6.5",
+  "version": "0.6.6",
   "description": "Jev-guided Codex compaction that restores exact details the summary lost.",
   "author": {
     "name": "jevcomp contributors"
