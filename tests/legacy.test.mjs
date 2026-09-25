@@ -10,9 +10,9 @@ import { readHistory } from '../dist/store.js';
 import { ensureDashboard, runningDashboard } from '../dist/dashboard-service.js';
 
 test('old JEV_COMPACT_* settings apply unless the new name is set', () => {
-  const env = { JEV_COMPACT_MODE: 'observe', JEV_COMPACT_RETRIES: '0', JEVCOMP_RETRIES: '2' };
+  const env = { JEV_COMPACT_RESTORE_MODE: 'balanced', JEV_COMPACT_RETRIES: '0', JEVCOMP_RETRIES: '2' };
   adoptLegacyEnvironment(env);
-  assert.equal(env.JEVCOMP_MODE, 'observe');
+  assert.equal(env.JEVCOMP_RESTORE_MODE, 'balanced');
   assert.equal(env.JEVCOMP_RETRIES, '2');
 });
 

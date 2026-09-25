@@ -9,14 +9,6 @@ const percent = (n: number) => `${Math.round(n * 100)}%`;
 
 export const SETTINGS_ITEMS: Item[] = [
   {
-    name: 'mode',
-    title: 'What jevcomp does',
-    help: 'Add back lost details: after each compaction, gives Codex the useful details its summary lost. '
-      + 'Measure only: does the same work and shows it on the dashboard, but changes nothing in Codex.',
-    choices: [{ value: 'active', label: 'Add back lost details' }, { value: 'observe', label: 'Measure only' }],
-    current: (settings) => settings.mode,
-  },
-  {
     name: 'restore-mode',
     title: 'How much to add back',
     help: 'Everything missing: all useful details the summary lost, up to the size limit below. '

@@ -1,7 +1,7 @@
 {
   "name": "jevcomp",
-  "version": "0.6.2",
-  "description": "Jev-guided Codex compaction with exact post-compaction dedupe and observe mode.",
+  "version": "0.6.3",
+  "description": "Jev-guided Codex compaction that restores exact details the summary lost.",
   "author": {
     "name": "jevcomp contributors"
   },
@@ -19,7 +19,7 @@
   "interface": {
     "displayName": "jevcomp",
     "shortDescription": "Restore only useful evidence missing after Codex compaction.",
-    "longDescription": "Uses Jev to select useful history before Codex compaction and restore exact missing evidence. Requires an OpenRouter or TypeSafe API key; configure it after installation. Observe mode measures the pipeline without changing Codex context.",
+    "longDescription": "Uses Jev to select useful history before Codex compaction and restore exact missing evidence. Requires an OpenRouter or TypeSafe API key; configure it after installation.",
     "developerName": "jevcomp contributors",
     "category": "Productivity",
     "websiteURL": "https://github.com/tcfialho/jevcomp",

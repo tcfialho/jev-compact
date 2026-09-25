@@ -4,11 +4,9 @@ import { dirname, join } from 'node:path';
 import { configDir, type Env } from './provider.js';
 
 export type RestoreMode = 'preserve' | 'balanced' | 'minimal';
-export type OperationMode = 'active' | 'observe';
-export type SettingName = 'mode' | 'restore-mode' | 'restore-max-chars' | 'pin-recent-messages' | 'loss-threshold' | 'min-reduction-ratio';
+export type SettingName = 'restore-mode' | 'restore-max-chars' | 'pin-recent-messages' | 'loss-threshold' | 'min-reduction-ratio';
 
 interface SavedSettings {
-  mode?: OperationMode;
   restoreMode?: RestoreMode;
   restoreMaxChars?: number;
   pinRecentMessages?: number;
@@ -23,14 +21,12 @@ function finiteNumber(value: unknown): number | undefined {
 function sanitizeSavedSettings(value: unknown): SavedSettings {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   const record = value as Record<string, unknown>;
-  const mode = typeof record.mode === 'string' ? normalizedOperationMode(record.mode) : undefined;
   const restoreMode = typeof record.restoreMode === 'string' ? normalizedMode(record.restoreMode) : undefined;
   const restoreMaxChars = finiteNumber(record.restoreMaxChars);
   const pinRecentMessages = finiteNumber(record.pinRecentMessages);
   const lossThreshold = finiteNumber(record.lossThreshold);
   const minReductionRatio = finiteNumber(record.minReductionRatio);
   return {
-    ...(mode ? { mode } : {}),
     ...(restoreMode ? { restoreMode } : {}),
     ...(restoreMaxChars !== undefined && restoreMaxChars >= 0 ? { restoreMaxChars: Math.floor(restoreMaxChars) } : {}),
     ...(pinRecentMessages !== undefined && pinRecentMessages >= 0 ? { pinRecentMessages: Math.floor(pinRecentMessages) } : {}),
@@ -40,7 +36,6 @@ function sanitizeSavedSettings(value: unknown): SavedSettings {
 }
 
 export interface UserSettings {
-  mode: OperationMode;
   restoreMode: RestoreMode;
   restoreModeWarning?: string;
   restoreMaxChars: number;
@@ -77,15 +72,7 @@ function normalizedMode(value: string | undefined): RestoreMode | undefined {
   return undefined;
 }
 
-function normalizedOperationMode(value: string | undefined): OperationMode | undefined {
-  const v = (value ?? '').trim().toLowerCase();
-  if (v === 'active' || v === 'on') return 'active';
-  if (v === 'observe' || v === 'shadow') return 'observe';
-  return undefined;
-}
-
 const ENV_NAMES: Record<SettingName, string[]> = {
-  'mode': ['JEVCOMP_MODE'],
   'restore-mode': ['JEVCOMP_RESTORE_MODE'],
   'restore-max-chars': ['JEVCOMP_RESTORE_MAX_CHARS', 'JEVCOMP_CONTEXT_CHARS'],
   'pin-recent-messages': ['JEVCOMP_PIN_RECENT_MESSAGES', 'JEVCOMP_PRESERVE_RECENT'],
@@ -100,7 +87,6 @@ export function settingOverride(name: SettingName, env: Env = process.env): stri
 
 export function userSettings(env: Env = process.env): UserSettings {
   const stored = saved(env);
-  const operationMode = normalizedOperationMode(env.JEVCOMP_MODE) ?? stored.mode ?? 'active';
   const rawMode = env.JEVCOMP_RESTORE_MODE;
   const modeFromEnv = normalizedMode(rawMode);
   const restoreMode = modeFromEnv ?? stored.restoreMode ?? 'preserve';
@@ -113,7 +99,6 @@ export function userSettings(env: Env = process.env): UserSettings {
   const loss = envNumber(env, ['JEVCOMP_LOSS_THRESHOLD', 'JEVCOMP_KEEP_THRESHOLD']) ?? stored.lossThreshold ?? 0.5;
   const minReduction = envNumber(env, ['JEVCOMP_MIN_REDUCTION_RATIO', 'JEVCOMP_MIN_REDUCTION']) ?? stored.minReductionRatio ?? 0.15;
   return {
-    mode: operationMode,
     restoreMode,
     restoreModeWarning,
     restoreMaxChars: Math.max(0, Math.floor(restoreMax)),
@@ -125,11 +110,7 @@ export function userSettings(env: Env = process.env): UserSettings {
 
 export async function setUserSetting(name: SettingName, rawValue: string, env: Env = process.env): Promise<UserSettings> {
   const current = saved(env);
-  if (name === 'mode') {
-    const mode = normalizedOperationMode(rawValue);
-    if (!mode) throw new Error('mode must be active or observe');
-    current.mode = mode;
-  } else if (name === 'restore-mode') {
+  if (name === 'restore-mode') {
     const mode = normalizedMode(rawValue);
     if (!mode) throw new Error('restore-mode must be preserve, balanced, or minimal');
     current.restoreMode = mode;

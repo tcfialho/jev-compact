@@ -12,8 +12,6 @@ export interface SessionState {
   turnId?: string;
   trigger?: string;
   model?: string;
-  operationMode?: 'active' | 'observe';
-  wouldApply?: boolean;
   transcriptPath?: string;
   transcriptBytesAtScore?: number;
   createdAt: string;
@@ -35,10 +33,8 @@ export interface HistoryRow {
   trigger?: string;
   model?: string;
   provider?: string;
-  operationMode?: 'active' | 'observe';
-  wouldApply?: boolean;
   phase?: 'precompact' | 'postcompact' | 'restore';
-  status: 'prepared' | 'ready' | 'restored' | 'observed' | 'skipped' | 'failed';
+  status: 'prepared' | 'ready' | 'restored' | 'skipped' | 'failed';
   stats?: CompactStats;
   decisions?: CallDecision[];
   detail?: string;
@@ -54,9 +50,6 @@ export interface HistoryRow {
   membershipStatus?: 'verified' | 'unavailable' | 'stale';
   dedupedTextItems?: number;
   dedupedToolPairs?: number;
-  /** Hypothetical values populated by observe mode; nothing was actually injected. */
-  wouldInjectChars?: number;
-  wouldInjectPayloadChars?: number;
 }
 
 function safe(value: string): string { return value.replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 180); }

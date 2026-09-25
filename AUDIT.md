@@ -243,3 +243,9 @@ The npm name `jev-compact` belongs to another Jev compaction project, so the pac
 - History from `~/.codex/jev-compact` and `plugins/data/jev-compact-jev-compact` is still read.
 - A dashboard started under the old name keeps port 43127 until replaced; the new launcher replaces it when the port is busy with one of ours.
 - `npm install -g github:...` on npm 11.16 installs a link to a deleted temporary clone; `--install-links` installs a real copy.
+
+## 0.6.3 observe mode removed — 2026-09-24
+
+Measuring without restoring paid for Jev on every compaction and gave nothing back, so the mode was removed from settings, hooks, history and dashboard.
+
+- A saved `mode` and `JEVCOMP_MODE`/`JEV_COMPACT_MODE` are ignored; every run restores.

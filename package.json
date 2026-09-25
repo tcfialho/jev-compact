@@ -1,7 +1,7 @@
 {
   "name": "jevcomp",
-  "version": "0.6.2",
-  "description": "Jev-guided Codex compaction with conservative post-compaction dedupe, observe mode, TypeSafe and OpenRouter.",
+  "version": "0.6.3",
+  "description": "Jev-guided Codex compaction with conservative post-compaction dedupe, TypeSafe and OpenRouter.",
   "type": "module",
   "license": "MIT",
   "engines": {

@@ -28,21 +28,21 @@ test('arrow keys change and save settings without typing names', async () => {
   const env = { JEVCOMP_CONFIG_DIR: await mkdtemp(join(tmpdir(), 'jevcomp-menu-')) };
   const terminal = fakeTerminal();
   const run = runSettingsMenu(terminal, env);
-  await press(terminal, run, ['\x1b[C', '\x1b[B', '\x1b[B', '\x1b[C', '\x1b']);
+  await press(terminal, run, ['\x1b[C', '\x1b[B', '\x1b[C', '\x1b']);
   const settings = userSettings(env);
-  assert.equal(settings.mode, 'observe');
+  assert.equal(settings.restoreMode, 'balanced');
   assert.equal(settings.restoreMaxChars, 100_000);
-  assert.match(terminal.screen(), /Measure only/);
+  assert.match(terminal.screen(), /Balanced/);
   assert.match(terminal.screen(), /Upper limit for the text jevcomp adds back/);
 });
 
 test('a setting decided by an environment variable is explained, not changed', async () => {
-  const env = { JEVCOMP_CONFIG_DIR: await mkdtemp(join(tmpdir(), 'jevcomp-menu-env-')), JEVCOMP_MODE: 'active' };
+  const env = { JEVCOMP_CONFIG_DIR: await mkdtemp(join(tmpdir(), 'jevcomp-menu-env-')), JEVCOMP_RESTORE_MODE: 'minimal' };
   const terminal = fakeTerminal();
   const run = runSettingsMenu(terminal, env);
   await press(terminal, run, ['\x1b[C', 'q']);
-  assert.equal(userSettings({ JEVCOMP_CONFIG_DIR: env.JEVCOMP_CONFIG_DIR }).mode, 'active');
-  assert.match(terminal.screen(), /JEVCOMP_MODE is set in your environment/);
+  assert.equal(userSettings({ JEVCOMP_CONFIG_DIR: env.JEVCOMP_CONFIG_DIR }).restoreMode, 'preserve');
+  assert.match(terminal.screen(), /JEVCOMP_RESTORE_MODE is set in your environment/);
 });
 
 test('the last row resets everything to defaults', async () => {
@@ -50,6 +50,6 @@ test('the last row resets everything to defaults', async () => {
   const terminal = fakeTerminal();
   const run = runSettingsMenu(terminal, env);
   await press(terminal, run, ['\x1b[C', '\x1b[A', '\r', '\x03']);
-  assert.equal(userSettings(env).mode, 'active');
+  assert.equal(userSettings(env).restoreMode, 'preserve');
   assert.match(terminal.screen(), /back to their defaults/);
 });

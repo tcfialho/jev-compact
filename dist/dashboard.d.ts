@@ -15,7 +15,7 @@ interface RunSummary {
     trigger?: string;
     model?: string;
     provider?: string;
-    status: 'prepared' | 'ready' | 'restored' | 'observed' | 'skipped' | 'failed' | 'restore_failed';
+    status: 'prepared' | 'ready' | 'restored' | 'skipped' | 'failed' | 'restore_failed';
     reductionRatio: number;
     charsBefore: number;
     charsAfter: number;
@@ -31,9 +31,7 @@ interface RunSummary {
     jevUsageReportedRequests: number;
     selectionMs: number;
     restoreMode?: string;
-    operationMode?: string;
     injectedPayloadChars?: number;
-    wouldInjectPayloadChars?: number;
     retainedChars?: number;
     nativePresentChars?: number;
     restoreCandidateChars?: number;
@@ -48,7 +46,6 @@ export declare function stats(env?: Record<string, string | undefined>): Promise
     prepared: number;
     ready: number;
     restored: number;
-    observed: number;
     latestRestoredAt: string;
     skipped: number;
     nativeFallbacks: number;
@@ -69,10 +66,6 @@ export declare function stats(env?: Record<string, string | undefined>): Promise
     nativePresentChars: number;
     restoreCandidateChars: number;
     verifiedMemberships: number;
-    wouldInjectChars: number;
-    wouldInjectPayloadChars: number;
-    observedNativePresentChars: number;
-    observedRestoreCandidateChars: number;
     jevInputTokens: number;
     jevOutputTokens: number;
     jevRequests: number;

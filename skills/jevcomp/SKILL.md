@@ -31,7 +31,6 @@ Do not claim that hook mode rewrites the native Codex compaction request. It pre
 - `node "<installedPath>/dist/cli.js" install typesafe` (TypeSafe)
 - `node "<installedPath>/dist/cli.js" doctor`
 - `node "<installedPath>/dist/cli.js" settings`
-- `node "<installedPath>/dist/cli.js" settings mode observe`
 - `node "<installedPath>/dist/cli.js" settings restore-mode balanced`
 - `node "<installedPath>/dist/cli.js" dashboard` (restarts it; the plugin already starts it at `http://127.0.0.1:43127/` with each Codex session)
 - `node "<installedPath>/dist/cli.js" compact <rollout.jsonl> --context retained.txt --json retained.json`
@@ -46,9 +45,7 @@ Per-session files include state, a full retained normalized context archive, and
 
 Preferred modes are `preserve` (default), `balanced`, and `minimal`. The restore hooks set Codex `additionalContextLimit` to `0` intentionally so Codex does not apply its own generic hook-output spill on top of jevcomp's restore mode/cap. `JEVCOMP_RESTORE_MAX_CHARS` is therefore the plugin-level global cap for the selected evidence payload in all restore modes; mode-specific limits may be smaller.
 
-People change settings with the `settings` menu in a terminal. From Codex, use `settings NAME VALUE` (names below) and show the result, which lists every setting in plain words. The user-facing controls are `mode`, `restore-mode`, `restore-max-chars`, `pin-recent-messages`, `loss-threshold`, and `min-reduction-ratio`. Environment variables remain overrides for automation and compatibility.
-
-`mode=active` is the default. `mode=observe` still runs Jev and the post-compaction membership analysis, records what would have been restored, but returns no `additionalContext` to Codex. `shadow` is a compatibility alias for `observe`.
+People change settings with the `settings` menu in a terminal. From Codex, use `settings NAME VALUE` (names below) and show the result, which lists every setting in plain words. The user-facing controls are `restore-mode`, `restore-max-chars`, `pin-recent-messages`, `loss-threshold`, and `min-reduction-ratio`. Environment variables remain overrides for automation and compatibility.
 
 Post-compaction dedupe is intentionally exact/conservative: message role+full text must match, and a completed tool pair is considered present only when both exact call and exact result survive. The checkpoint used for membership must be newer than the byte position recorded at `PreCompact`; otherwise restore falls back to the full preservation-first behavior.
 

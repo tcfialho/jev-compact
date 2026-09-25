@@ -127,30 +127,10 @@ The dashboard shows values that `jevcomp` can actually measure:
 - removed retained-context characters grouped by tool;
 - recent Keep / Shorten / Remove decisions and their Jev loss-risk values;
 - recent compaction runs and which restore mode they used.
-- observe-mode runs, including what would have been restored while Codex context remained unchanged.
 
 It deliberately **does not claim Codex billing-token savings** from a `characters ÷ 4` estimate. Hook mode cannot observe Codex's final billing tokenizer/cache accounting, so the dashboard keeps those numbers separate from what is actually measured.
 
-## Observe mode
-
-To measure `jevcomp` on your own sessions before letting it add anything back, run `jevcomp settings` and set **What jevcomp does** to **Measure only**.
-
-In `observe` mode the real Jev selection still runs at `PreCompact`, and after native compaction `jevcomp` performs the same exact membership/dedupe analysis it would use in active mode. It records:
-
-- what Jev selected;
-- whether the configured minimum reduction would have allowed a restore;
-- how much selected evidence already survived native Codex compaction verbatim;
-- how much was still missing;
-- how much evidence/context would have been returned after the configured restore mode and caps;
-- real Jev request/token/latency metrics when available.
-
-But it returns **no `additionalContext`** to Codex. Native Codex context is therefore unchanged by `jevcomp`; the trade-off is that you still pay the Jev request cost and wait for its selection during compaction.
-
-Set it back to **Add back lost details** to return to normal.
-
-`shadow` remains accepted as an environment/config alias for `observe`, but `observe` is the preferred user-facing name.
-
-### Why post-compaction dedupe is conservative
+## Why post-compaction dedupe is conservative
 
 The optimization does not ask another model whether two pieces of text are "basically the same". It only suppresses extra reinjection when there is objective evidence in the new Codex history:
 
@@ -191,7 +171,6 @@ Run `jevcomp settings` (plugin: ask Codex to change a jevcomp setting). It opens
 
 | Setting | Default | Plain meaning | If you increase it |
 | --- | ---: | --- | --- |
-| **What jevcomp does** (`mode`) | `active` | `active` restores selected evidence; `observe` runs the same analysis and records what would happen without injecting context. | Named mode, not a number. Use `observe` to validate behavior safely. |
 | **How much to add back** (`restore-mode`) | `preserve` | How much selected evidence is put back after compaction. | This is a named mode, not a number: `balanced` and `minimal` inject less. |
 | **Most text added back** (`restore-max-chars`) | `60000` | Hard character cap for the evidence payload in **every** restore mode, before the recovery header/path. `0` disables this global cap; mode-specific limits and the per-result anti-crowding safeguard still apply. | More selected old evidence can return to the model. |
 | **Recent messages never touched** (`pin-recent-messages`) | `6` | Newest normalized messages Jev is not allowed to prune. | Safer/more conservative; less history becomes removable. |
@@ -200,7 +179,7 @@ Run `jevcomp settings` (plugin: ask Codex to change a jevcomp setting). It opens
 
 `loss-threshold` is deliberately named around what Jev answers: **risk of losing still-needed information**. If you are unsure, leave it at `0.5`; the dashboard exposes the actual decision scores.
 
-Saved settings live under `~/.config/jevcomp/settings.json`. Environment variables still override saved settings for automation and compatibility: `JEVCOMP_MODE`, `JEVCOMP_RESTORE_MODE`, `JEVCOMP_RESTORE_MAX_CHARS`, `JEVCOMP_PIN_RECENT_MESSAGES`, `JEVCOMP_LOSS_THRESHOLD`, and `JEVCOMP_MIN_REDUCTION_RATIO`. Legacy aliases, including the old `JEV_COMPACT_*` names, remain accepted.
+Saved settings live under `~/.config/jevcomp/settings.json`. Environment variables still override saved settings for automation and compatibility: `JEVCOMP_RESTORE_MODE`, `JEVCOMP_RESTORE_MAX_CHARS`, `JEVCOMP_PIN_RECENT_MESSAGES`, `JEVCOMP_LOSS_THRESHOLD`, and `JEVCOMP_MIN_REDUCTION_RATIO`. Legacy aliases, including the old `JEV_COMPACT_*` names, remain accepted.
 
 ## Advanced options
 
@@ -301,6 +280,5 @@ Independent implementation informed by the MIT-licensed:
 - `leonaaardob/fast-dev-compaction`
 - `tamaratran/fast-jevcompion`
 - `fatelei/jevcomp` (post-compaction membership/backfill idea)
-- `GhalebDweikat/winnow` (observe/shadow-mode methodology)
 
 See `AUDIT.md` for the detailed behavior comparison and Codex compatibility notes.

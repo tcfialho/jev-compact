@@ -156,7 +156,6 @@ async function restore(input, event, env) {
         return { continue: true, suppressOutput: true };
     const settings = userSettings(env);
     const restoreMode = settings.restoreMode;
-    const operationMode = preview.operationMode ?? 'active';
     const cap = settings.restoreMaxChars;
     let retainedMessages;
     let fallbackContext = '';
@@ -170,7 +169,7 @@ async function restore(input, event, env) {
         await tryAppendHistory({
             at: new Date().toISOString(), runId: preview.runId ?? preview.createdAt,
             sessionId: input.session_id, turnId: input.turn_id, phase: 'restore', status: 'failed',
-            operationMode, stats: preview.stats,
+            stats: preview.stats,
             detail: `restore archive unavailable: ${error instanceof Error ? error.message : String(error)}`,
         }, env);
         return { continue: true, suppressOutput: true };
@@ -187,7 +186,6 @@ async function restore(input, event, env) {
     const state = await claimReady(input.session_id, ttl, env, preview.createdAt);
     if (!state)
         return { continue: true, suppressOutput: true };
-    const wouldApply = state.wouldApply ?? true;
     const membershipDetail = membership.status === 'verified'
         ? `exact post-compaction dedupe removed ${membership.nativePresentChars} retained chars already present in Codex`
         : membership.status === 'stale'
@@ -208,8 +206,6 @@ async function restore(input, event, env) {
         sessionId: input.session_id,
         turnId: input.turn_id,
         phase: 'restore',
-        operationMode,
-        wouldApply,
         stats: state.stats,
         restoreMode,
         restoreLimitChars: cap,
@@ -220,27 +216,13 @@ async function restore(input, event, env) {
         dedupedTextItems: membership.dedupedTextItems,
         dedupedToolPairs: membership.dedupedToolPairs,
     };
-    if (operationMode === 'observe') {
-        const hypotheticalPayloadChars = wouldApply ? payload.length : 0;
-        const hypotheticalInjectedChars = wouldApply ? injected.length : 0;
-        await tryAppendHistory({
-            ...commonHistory,
-            status: 'observed',
-            wouldInjectChars: hypotheticalInjectedChars,
-            wouldInjectPayloadChars: hypotheticalPayloadChars,
-            detail: wouldApply ? membershipDetail : `would skip because reduction was below configured minimum; ${membershipDetail}`,
-        }, env);
-        // Observe mode deliberately returns no additionalContext. It pays the Jev/analysis cost
-        // so the dashboard can show what would happen, but native Codex context is unchanged.
-        return { continue: true, suppressOutput: true };
-    }
-    if (!wouldApply || !payload) {
+    if (!payload) {
         await tryAppendHistory({
             ...commonHistory,
             status: 'restored',
             injectedChars: 0,
             injectedPayloadChars: 0,
-            detail: !wouldApply ? 'selection would not meet configured minimum reduction' : `nothing missing after native compaction; ${membershipDetail}`,
+            detail: `nothing missing after native compaction; ${membershipDetail}`,
         }, env);
         return { continue: true, suppressOutput: true };
     }
@@ -322,9 +304,8 @@ export async function handleHook(value, env = process.env, options = {}) {
                 retries: Math.max(0, num(env, 'JEVCOMP_RETRIES', 1)),
             });
             const minimum = settings.minReductionRatio;
-            const wouldApply = reductionRatio(result) >= minimum;
-            if (!wouldApply && settings.mode === 'active') {
-                await tryAppendHistory({ at: new Date().toISOString(), runId, sessionId: input.session_id, turnId: input.turn_id, trigger: input.trigger, model: input.model, provider, operationMode: settings.mode, wouldApply, phase: 'precompact', status: 'skipped', stats: result.stats, decisions: result.decisions, detail: `reduction below ${minimum}` }, env);
+            if (reductionRatio(result) < minimum) {
+                await tryAppendHistory({ at: new Date().toISOString(), runId, sessionId: input.session_id, turnId: input.turn_id, trigger: input.trigger, model: input.model, provider, phase: 'precompact', status: 'skipped', stats: result.stats, decisions: result.decisions, detail: `reduction below ${minimum}` }, env);
                 return { continue: true, suppressOutput: true };
             }
             const prepared = await prepareState({
@@ -332,8 +313,6 @@ export async function handleHook(value, env = process.env, options = {}) {
                 turnId: input.turn_id,
                 trigger: input.trigger,
                 model: input.model,
-                operationMode: settings.mode,
-                wouldApply,
                 transcriptPath: input.transcript_path,
                 transcriptBytesAtScore: rollout.fileBytes,
                 createdAt,
@@ -344,13 +323,10 @@ export async function handleHook(value, env = process.env, options = {}) {
             }, renderMessages(result.messages), env, result.messages);
             await tryAppendHistory({
                 at: new Date().toISOString(), runId, sessionId: input.session_id, turnId: input.turn_id,
-                trigger: input.trigger, model: input.model, provider, operationMode: settings.mode, wouldApply,
+                trigger: input.trigger, model: input.model, provider,
                 phase: 'precompact', status: 'prepared', stats: result.stats, decisions: result.decisions,
                 retainedChars: prepared.contextChars,
-                ...(settings.mode === 'observe' ? { detail: wouldApply ? 'observe mode: selection would be eligible for restore' : `observe mode: would skip because reduction is below ${minimum}` } : {}),
             }, env);
-            if (settings.mode === 'observe')
-                return { continue: true, suppressOutput: true };
             return { continue: true, systemMessage: `jevcomp: prepared ${Math.round(reductionRatio(result) * 100)}% smaller retained context (${result.stats.callsDropped} calls dropped, ${result.stats.resultsTruncated} results truncated)` };
         }
         catch (error) {
@@ -362,7 +338,7 @@ export async function handleHook(value, env = process.env, options = {}) {
         try {
             const state = await markReady(input.session_id, input.turn_id, env);
             if (state)
-                await tryAppendHistory({ at: new Date().toISOString(), runId: state.runId ?? state.createdAt, sessionId: input.session_id, turnId: input.turn_id, trigger: input.trigger, model: input.model, provider: providerName(env), operationMode: state.operationMode ?? 'active', wouldApply: state.wouldApply ?? true, phase: 'postcompact', status: 'ready', stats: state.stats }, env);
+                await tryAppendHistory({ at: new Date().toISOString(), runId: state.runId ?? state.createdAt, sessionId: input.session_id, turnId: input.turn_id, trigger: input.trigger, model: input.model, provider: providerName(env), phase: 'postcompact', status: 'ready', stats: state.stats }, env);
         }
         catch {
             // Compaction already succeeded. A sidecar persistence failure must not abort Codex.

@@ -336,7 +336,7 @@ test('post-compaction dedupe injects only retained evidence still missing verbat
   ];
   await prepareState({
     sessionId: 'dedupe', createdAt: new Date().toISOString(), stats, decisions, index: 'old index',
-    operationMode: 'active', wouldApply: true, transcriptPath: rollout,
+    transcriptPath: rollout,
     transcriptBytesAtScore: Buffer.byteLength(prefix),
   }, 'retained context', env, retainedMessages);
   await markReady('dedupe', undefined, env);
@@ -367,7 +367,7 @@ test('stale post-compaction checkpoint never suppresses retained evidence', asyn
   const retainedMessages = [{ role: 'developer', text: 'critical retained evidence', toolCalls: [] }];
   await prepareState({
     sessionId: 'dedupe-stale', createdAt: new Date().toISOString(), stats, decisions: [], index: 'index',
-    operationMode: 'active', wouldApply: true, transcriptPath: rollout,
+    transcriptPath: rollout,
     // Deliberately after the only checkpoint: this proves the checkpoint is older than our PreCompact snapshot.
     transcriptBytesAtScore: Buffer.byteLength(compacted) + 100,
   }, 'critical retained evidence', env, retainedMessages);
@@ -378,35 +378,3 @@ test('stale post-compaction checkpoint never suppresses retained evidence', asyn
   assert.equal(rows.at(-1).membershipStatus, 'stale');
 });
 
-test('observe mode computes real post-compaction dedupe but never injects context', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'jev-observe-'));
-  const rollout = join(root, 'rollout.jsonl');
-  const prefix = `${JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'before' }] } })}\n`;
-  const compacted = { type: 'compacted', payload: { window_number: 3, replacement_history: [
-    { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'already present' }] },
-  ] } };
-  await writeFile(rollout, prefix + JSON.stringify(compacted) + '\n');
-  const env = { JEVCOMP_DATA_DIR: join(root, 'data') };
-  const retainedMessages = [
-    { role: 'user', text: 'already present', toolCalls: [] },
-    { role: 'developer', text: 'would be restored', toolCalls: [] },
-  ];
-  await prepareState({
-    sessionId: 'observe', createdAt: new Date().toISOString(), stats, decisions: [], index: 'index',
-    operationMode: 'observe', wouldApply: true, transcriptPath: rollout,
-    transcriptBytesAtScore: Buffer.byteLength(prefix),
-  }, 'observe retained context', env, retainedMessages);
-  await markReady('observe', undefined, env);
-
-  const observed = await handleHook({ session_id: 'observe', hook_event_name: 'SessionStart', source: 'compact', transcript_path: rollout }, env);
-  assert.equal(observed.hookSpecificOutput, undefined);
-  const rows = (await readFile(join(env.JEVCOMP_DATA_DIR, 'history.jsonl'), 'utf8')).trim().split(/\n/).map(JSON.parse);
-  const row = rows.at(-1);
-  assert.equal(row.status, 'observed');
-  assert.equal(row.operationMode, 'observe');
-  assert.equal(row.membershipStatus, 'verified');
-  assert.ok(row.nativePresentChars > 0);
-  assert.ok(row.wouldInjectPayloadChars > 0);
-  const duplicate = await handleHook({ session_id: 'observe', hook_event_name: 'UserPromptSubmit', transcript_path: rollout }, env);
-  assert.equal(duplicate.hookSpecificOutput, undefined);
-});
