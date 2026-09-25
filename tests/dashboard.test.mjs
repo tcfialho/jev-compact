@@ -52,7 +52,7 @@ test('dashboard reports measured impact without invented token-savings estimates
   assert.match(html, /Duplicatas evitadas/);
   assert.doesNotMatch(html, /observe/i);
   assert.match(html, /não.*tokens.*Codex/i);
-  assert.match(html, /Removido deixa o par fora do texto selecionado/);
+  assert.match(html, /Descartado fica de fora do que o Jev guarda/);
   assert.match(html, /color-scheme:dark/);
   assert.doesNotMatch(html, /estimated tokens saved/i);
   const health = await fetch(`${dashboard.url}api/health`).then((r) => r.json());

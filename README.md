@@ -112,7 +112,6 @@ Open **http://127.0.0.1:43127/** in your browser. It starts by itself when a Cod
 
 - Restart it: `jevcomp dashboard` (plugin: ask Codex to restart the jevcomp dashboard).
 - Other port: `JEVCOMP_DASHBOARD_PORT=43200`.
-- Do not start it: `JEVCOMP_DASHBOARD=off`.
 
 The dashboard shows values that `jevcomp` can actually measure:
 
@@ -145,19 +144,19 @@ If the transcript is stale, missing, unsupported, or ambiguous, dedupe is disabl
 
 The restore mode controls how much of the Jev-selected evidence is added back to Codex after native compaction. `jevcomp` disables Codex's generic hook-output spill for its two restore hooks, so these modes and `JEVCOMP_RESTORE_MAX_CHARS` are the source of truth for our evidence payload instead of being silently truncated again by Codex. The max-chars setting applies to all three modes; a mode may have a smaller internal limit.
 
-### Everything missing (`preserve`) — default
+### All the text the summary lost (`preserve`) — default
 
 Uses the most preservation-first reinjection: selected evidence is restored up to the global cap. To stop one enormous tool result from crowding out everything else, an individual very large result is represented by a bounded head+tail excerpt in the injected payload; the full retained normalized archive always stays on disk and its path is included.
 
 Use this when continuity/exact details matter more than minimizing the extra context added after compaction.
 
-### Balanced (`balanced`)
+### Part of the text (`balanced`)
 
 Injects a compact index plus a bounded evidence excerpt. The full retained normalized archive stays on disk.
 
 This reduces the context added by `jevcomp` while still giving Codex some exact evidence immediately.
 
-### Short list only (`minimal`)
+### Only the list of what was kept (`minimal`)
 
 Injects only the compact index and file pointers. The full retained normalized archive stays on disk.
 
@@ -171,11 +170,11 @@ Run `jevcomp settings` (plugin: ask Codex to change a jevcomp setting). It opens
 
 | Setting | Default | Plain meaning | If you increase it |
 | --- | ---: | --- | --- |
-| **How much to add back** (`restore-mode`) | `preserve` | How much selected evidence is put back after compaction. | This is a named mode, not a number: `balanced` and `minimal` inject less. |
-| **Most text added back** (`restore-max-chars`) | `60000` | Hard character cap for the evidence payload in **every** restore mode, before the recovery header/path. `0` disables this global cap; mode-specific limits and the per-result anti-crowding safeguard still apply. | More selected old evidence can return to the model. |
-| **Recent messages never touched** (`pin-recent-messages`) | `6` | Newest normalized messages Jev is not allowed to prune. | Safer/more conservative; less history becomes removable. |
-| **How boldly to trim** (`loss-threshold`) | `0.5` | Maximum Jev loss-risk accepted for removing/shortening evidence. The action only happens when its risk is **below** this value. | More aggressive pruning because a higher estimated loss risk is tolerated. |
-| **Skip small gains** (`min-reduction-ratio`) | `0.15` | Minimum measured character reduction required before a retained sidecar is used. | Requires a larger reduction before jevcomp adds anything back. |
+| **How much text to send to Codex** (`restore-mode`) | `preserve` | How much selected evidence is put back after compaction. | This is a named mode, not a number: `balanced` and `minimal` inject less. |
+| **Limit on text sent to Codex** (`restore-max-chars`) | `60000` | Hard character cap for the evidence payload in **every** restore mode, before the recovery header/path. `0` disables this global cap; mode-specific limits and the per-result anti-crowding safeguard still apply. | More selected old evidence can return to the model. |
+| **Recent messages never cut** (`pin-recent-messages`) | `6` | Newest normalized messages Jev is not allowed to prune. | Safer/more conservative; less history becomes removable. |
+| **How much to cut** (`loss-threshold`) | `0.5` | Maximum Jev loss-risk accepted for removing/shortening evidence. The action only happens when its risk is **below** this value. | More aggressive pruning because a higher estimated loss risk is tolerated. |
+| **Only act if it cuts at least** (`min-reduction-ratio`) | `0.15` | Minimum measured character reduction required before a retained sidecar is used. | Requires a larger reduction before jevcomp adds anything back. |
 
 `loss-threshold` is deliberately named around what Jev answers: **risk of losing still-needed information**. If you are unsure, leave it at `0.5`; the dashboard exposes the actual decision scores.
 

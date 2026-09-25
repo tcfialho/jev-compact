@@ -10,46 +10,46 @@ const percent = (n: number) => `${Math.round(n * 100)}%`;
 export const SETTINGS_ITEMS: Item[] = [
   {
     name: 'restore-mode',
-    title: 'How much to add back',
-    help: 'Everything missing: all useful details the summary lost, up to the size limit below. '
-      + 'Balanced: a short list plus part of the details. Short list only: least extra text; details stay saved on disk.',
+    title: 'How much text to send to Codex',
+    help: 'After compaction, jevcomp sends Codex the text its summary lost. All: everything, up to the limit below. '
+      + 'Part: a list plus excerpts. List only: just the names of what was kept; the full text stays saved on your computer.',
     choices: [
-      { value: 'preserve', label: 'Everything missing' },
-      { value: 'balanced', label: 'Balanced' },
-      { value: 'minimal', label: 'Short list only' },
+      { value: 'preserve', label: 'All the text the summary lost' },
+      { value: 'balanced', label: 'Part of the text' },
+      { value: 'minimal', label: 'Only the list of what was kept' },
     ],
     current: (settings) => settings.restoreMode,
   },
   {
     name: 'restore-max-chars',
-    title: 'Most text added back',
-    help: 'Upper limit for the text jevcomp adds back after each compaction. Higher keeps more details but uses more of the context.',
+    title: 'Limit on text sent to Codex',
+    help: 'The most text jevcomp sends to Codex after each compaction. Higher keeps more details but takes more room in the conversation.',
     choices: [20_000, 40_000, 60_000, 100_000, 150_000].map((n) => ({ value: String(n), label: chars(n) })),
     current: (settings) => String(settings.restoreMaxChars),
   },
   {
     name: 'pin-recent-messages',
-    title: 'Recent messages never touched',
-    help: 'The newest messages are always kept whole. Higher is safer; lower lets jevcomp trim more.',
+    title: 'Recent messages never cut',
+    help: 'The newest messages always stay whole. Higher is safer; lower lets jevcomp cut more.',
     choices: [2, 4, 6, 8, 12].map((n) => ({ value: String(n), label: String(n) })),
     current: (settings) => String(settings.pinRecentMessages),
   },
   {
     name: 'loss-threshold',
-    title: 'How boldly to trim',
-    help: 'Jev estimates the risk of losing something still needed. Careful trims only when that risk is low; bold trims more.',
+    title: 'How much to cut',
+    help: 'Jev estimates the risk of cutting something Codex still needs. Little: cuts only low-risk output. A lot: cuts more.',
     choices: [
-      { value: '0.3', label: 'Careful' },
+      { value: '0.3', label: 'Little' },
       { value: '0.5', label: 'Normal' },
-      { value: '0.7', label: 'Bold' },
+      { value: '0.7', label: 'A lot' },
     ],
     current: (settings) => String(settings.lossThreshold),
   },
   {
     name: 'min-reduction-ratio',
-    title: 'Skip small gains',
-    help: 'If trimming would save less than this share of the text, jevcomp does nothing for that compaction.',
-    choices: [0.05, 0.1, 0.15, 0.25, 0.4].map((n) => ({ value: String(n), label: `Below ${percent(n)}` })),
+    title: 'Only act if it cuts at least',
+    help: 'If cutting would shrink the text by less than this, jevcomp leaves that compaction alone.',
+    choices: [0.05, 0.1, 0.15, 0.25, 0.4].map((n) => ({ value: String(n), label: percent(n) })),
     current: (settings) => String(settings.minReductionRatio),
   },
 ];

@@ -32,7 +32,7 @@ test('PreCompact -> PostCompact -> SessionStart works end to end', async (t) => 
     JEV_BASE_URL: `http://127.0.0.1:${port}`, JEVCOMP_PRESERVE_RECENT: '0', JEVCOMP_MIN_REDUCTION: '0', JEVCOMP_RETRIES: '0'
   };
   const pre = await handleHook({ session_id: 's', turn_id: 't', hook_event_name: 'PreCompact', transcript_path: rollout, trigger: 'manual', model: 'gpt-test' }, env);
-  assert.match(pre.systemMessage, /prepared/);
+  assert.match(pre.systemMessage, /kept what still matters/);
   const post = await handleHook({ session_id: 's', turn_id: 't', hook_event_name: 'PostCompact', trigger: 'manual' }, env);
   assert.equal(post.continue, true);
   const start = await handleHook({ session_id: 's', hook_event_name: 'SessionStart', source: 'compact' }, env);

@@ -3,7 +3,7 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { compactMessages, reductionRatio } from './compact.js';
-import { dashboardAutostart, dashboardPort, ensureDashboard } from './dashboard-service.js';
+import { dashboardPort, ensureDashboard } from './dashboard-service.js';
 import { inspectHooks, uninstallHooks } from './install.js';
 import { dedupeRetainedMessages, type DedupeSummary } from './membership.js';
 import { providerConfig, resolveApiKey, resolveProvider, type JevProvider } from './provider.js';
@@ -273,7 +273,7 @@ async function restore(input: HookInput, event: 'SessionStart' | 'UserPromptSubm
 }
 
 async function dashboardNotice(env: Record<string, string | undefined>, options: HookOptions): Promise<string | undefined> {
-  if (!options.startDashboard || !dashboardAutostart(env)) return undefined;
+  if (!options.startDashboard) return undefined;
   try { return `jevcomp dashboard: ${await ensureDashboard(dashboardPort(env), env)}`; }
   catch (error) { return `jevcomp dashboard unavailable: ${error instanceof Error ? error.message : String(error)}`; }
 }
@@ -300,7 +300,7 @@ export async function handleHook(value: unknown, env: Record<string, string | un
     await discardPendingState(input.session_id, env);
     if (!input.transcript_path) {
       await tryAppendHistory({ at: new Date().toISOString(), runId, sessionId: input.session_id, turnId: input.turn_id, trigger: input.trigger, model: input.model, provider: providerName(env), phase: 'precompact', status: 'failed', detail: 'transcript path unavailable' }, env);
-      return { continue: true, systemMessage: 'jevcomp: no transcript path; native compaction only' };
+      return { continue: true, systemMessage: 'jevcomp: Codex did not share this conversation, so it compacts without jevcomp' };
     }
     try {
       await sweep(env, num(env, 'JEVCOMP_STATE_MAX_AGE_MS', 48 * 60 * 60 * 1000));
@@ -357,10 +357,10 @@ export async function handleHook(value: unknown, env: Record<string, string | un
         phase: 'precompact', status: 'prepared', stats: result.stats, decisions: result.decisions,
         retainedChars: prepared.contextChars,
       }, env);
-      return { continue: true, systemMessage: `jevcomp: prepared ${Math.round(reductionRatio(result) * 100)}% smaller retained context (${result.stats.callsDropped} calls dropped, ${result.stats.resultsTruncated} results truncated)` };
+      return { continue: true, systemMessage: `jevcomp: kept what still matters from old command and file output (${Math.round(reductionRatio(result) * 100)}% cut: ${result.stats.callsDropped} removed, ${result.stats.resultsTruncated} shortened)` };
     } catch (error) {
       await tryAppendHistory({ at: new Date().toISOString(), runId, sessionId: input.session_id, turnId: input.turn_id, trigger: input.trigger, model: input.model, provider: providerName(env), phase: 'precompact', status: 'failed', detail: error instanceof Error ? error.message : String(error) }, env);
-      return { continue: true, systemMessage: `jevcomp: native compaction fallback (${error instanceof Error ? error.message : String(error)})` };
+      return { continue: true, systemMessage: `jevcomp: Codex compacted without jevcomp (${error instanceof Error ? error.message : String(error)})` };
     }
   }
   if (input.hook_event_name === 'PostCompact') {

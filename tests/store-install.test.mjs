@@ -86,7 +86,7 @@ test('plugin migrates legacy hooks without running twice in the same session', a
   assert.equal(sameSession.systemMessage, undefined);
   await handleHook({ session_id: 'migration-session', hook_event_name: 'SessionStart', source: 'resume' }, env);
   const nextSession = await handleHook(event, env);
-  assert.match(nextSession.systemMessage, /native compaction only/);
+  assert.match(nextSession.systemMessage, /compacts without jevcomp/);
 });
 
 test('plugin startup reports a missing key from its own environment', async () => {
@@ -171,7 +171,7 @@ test('a new PreCompact invalidates stale pending state before any early fallback
   const env = { JEVCOMP_DATA_DIR: root };
   await prepareState({ sessionId: 'stale', turnId: 'old-turn', createdAt: new Date().toISOString(), stats, decisions: [], index: 'old index' }, 'old retained context', env);
   const pre = await handleHook({ session_id: 'stale', turn_id: 'new-turn', hook_event_name: 'PreCompact', transcript_path: null }, env);
-  assert.match(pre.systemMessage, /native compaction only/);
+  assert.match(pre.systemMessage, /compacts without jevcomp/);
   await handleHook({ session_id: 'stale', turn_id: 'new-turn', hook_event_name: 'PostCompact' }, env);
   const restored = await handleHook({ session_id: 'stale', hook_event_name: 'SessionStart', source: 'compact' }, env);
   assert.equal(restored.hookSpecificOutput, undefined);

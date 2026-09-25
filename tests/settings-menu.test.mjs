@@ -32,8 +32,8 @@ test('arrow keys change and save settings without typing names', async () => {
   const settings = userSettings(env);
   assert.equal(settings.restoreMode, 'balanced');
   assert.equal(settings.restoreMaxChars, 100_000);
-  assert.match(terminal.screen(), /Balanced/);
-  assert.match(terminal.screen(), /Upper limit for the text jevcomp adds back/);
+  assert.match(terminal.screen(), /Part of the text/);
+  assert.match(terminal.screen(), /The most text jevcomp sends to Codex/);
 });
 
 test('a setting decided by an environment variable is explained, not changed', async () => {

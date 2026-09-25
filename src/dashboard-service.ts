@@ -18,10 +18,6 @@ export function dashboardPort(env: Env = process.env): number {
   return Number.isInteger(port) && port > 0 && port < 65536 ? port : DEFAULT_DASHBOARD_PORT;
 }
 
-export function dashboardAutostart(env: Env = process.env): boolean {
-  return env.JEVCOMP_DASHBOARD !== 'off';
-}
-
 export function dashboardInstancePath(port: number, env: Env = process.env): string {
   return join(dataDir(env), `dashboard-${port}.json`);
 }

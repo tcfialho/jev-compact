@@ -5,10 +5,20 @@ import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createServer } from 'node:net';
+import { runningDashboard } from '../dist/dashboard-service.js';
 
 const pluginRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const manifest = JSON.parse(await readFile(join(pluginRoot, 'hooks', 'hooks.json'), 'utf8'));
 const handlers = Object.values(manifest.hooks).flatMap((groups) => groups.flatMap((group) => group.hooks));
+
+async function freePort() {
+  const server = createServer();
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address();
+  await new Promise((resolve) => server.close(resolve));
+  return port;
+}
 
 // Codex runs plugin hooks through the session's user shell, so the command must not rely on one shell's variable syntax.
 function codexShells() {
@@ -34,11 +44,12 @@ test('plugin hook commands avoid shell-specific variable expansion', () => {
   }
 });
 
-test('plugin hook command runs from any working directory in every shell Codex may use', async () => {
+test('plugin hook command runs from any working directory in every shell Codex may use', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'jev-hook-shells-'));
+  const port = await freePort();
   const env = {
     ...process.env,
-    JEVCOMP_DASHBOARD: 'off',
+    JEVCOMP_DASHBOARD_PORT: String(port),
     PLUGIN_ROOT: pluginRoot,
     PLUGIN_DATA: join(root, 'data'),
     CODEX_HOME: join(root, 'codex-home'),
@@ -46,6 +57,10 @@ test('plugin hook command runs from any working directory in every shell Codex m
     OPENROUTER_API_KEY: '',
     TYPESAFE_API_KEY: '',
   };
+  t.after(async () => {
+    const running = await runningDashboard(port, env);
+    if (running) process.kill(running.pid);
+  });
   const events = [
     { session_id: 'shell-check', hook_event_name: 'SessionStart', source: 'startup', transcript_path: null, cwd: root },
     { session_id: 'shell-check', hook_event_name: 'UserPromptSubmit', prompt: 'hello', transcript_path: null, cwd: root },
