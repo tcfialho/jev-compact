@@ -13,6 +13,8 @@ Find the installed `jevcomp` entry with `codex plugin list --json` and use its `
 
 Run `node "<installedPath>/dist/cli.js" doctor --json` first. If `apiKeyConfigured` is true, keep the current provider and key. Check `/hooks` in Codex and confirm PreCompact, PostCompact, SessionStart, and UserPromptSubmit are active.
 
+When the user asks to check jevcomp, answer in plain words: whether the key is set and for which provider, and the dashboard address. Use `dashboardUrl` from `doctor --json`; when it is empty, give `http://127.0.0.1:43127/` and say it starts with the next Codex session. You cannot see `/hooks`, so ask the user to type `/hooks` and confirm the four jevcomp hooks are active. Tell them the installation is complete when Codex shows the `jevcomp dashboard:` message as a session starts, because only the jevcomp hooks print it.
+
 If the key is missing or the user wants to change it, use `install openrouter` or `install typesafe` from that installed CLI path (plain `install` asks). Ask which provider only when the user has not specified one. `install` also removes older standalone jevcomp hooks. Give the exact local command and have the user enter the key in the terminal's masked prompt; never ask for the key in chat. Plugin setup keeps hook management inside Codex. Recheck `doctor --json` and `/hooks` afterward. In plugin mode, `hooksInstalled` describes only standalone user hooks; `pluginRoot` identifies the plugin package.
 
 ## Lifecycle
