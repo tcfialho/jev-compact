@@ -350,7 +350,7 @@ table.rb th,table.rb td{white-space:nowrap}table.rb .rb-grow{width:100%}
 @media (max-width:760px){.shell{padding-inline:16px}.group{padding-inline:16px}.flow-steps{grid-template-columns:1fr}.flow-arrow>span:first-child{transform:rotate(90deg)}}
 </style></head><body>
 <div class="shell">
- <header class="topbar"><div class="brand"><b>jevcomp</b><span id="brand-sub">compactação do Codex e do Claude Code</span></div><div class="top-right"><div class="seg" id="agent-switch" role="group" aria-label="Agente" hidden><button type="button" data-agent="codex" aria-pressed="false">Codex</button><button type="button" data-agent="claude" aria-pressed="false">Claude Code</button></div><span class="small muted" id="live">dados locais</span></div></header>
+ <header class="topbar"><div class="brand"><b>jevcomp</b><span>compactação</span></div><div class="top-right"><div class="seg" id="agent-switch" role="group" aria-label="Agente" hidden><button type="button" data-agent="codex" aria-pressed="false">Codex</button><button type="button" data-agent="claude" aria-pressed="false">Claude Code</button></div><span class="small muted" id="live">dados locais</span></div></header>
  <nav class="nav" role="tablist" aria-label="Seções"><button role="tab" id="nav-geral" aria-controls="view-geral" aria-selected="true">Resumo</button><button role="tab" id="nav-config" aria-controls="view-config" aria-selected="false">Configurações</button></nav>
  <main class="content">
   <div id="error"></div>
@@ -523,7 +523,6 @@ function remembered(){try{return localStorage.getItem('jevcomp-agent')}catch{ret
 function pickAgent(id){
  agent=id;try{localStorage.setItem('jevcomp-agent',id)}catch{}
  document.querySelectorAll('#agent-switch button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.agent===id)));
- $('#brand-sub').textContent='compactação do '+AGENT_TITLE[id];
  refresh().catch(showError);
  if(!$('#view-config').hidden)loadSettings();
 }

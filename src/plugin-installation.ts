@@ -32,14 +32,18 @@ function cachedPluginRoot(env: Env): string | undefined {
   return undefined;
 }
 
-const detectedRoots = new Map<string, string | null>();
+// The dashboard runs for hours, so a plugin installed after it started must show up without a restart.
+const DETECTION_TTL_MS = 60_000;
+const detectedRoots = new Map<string, { root: string | null; at: number }>();
 
 export function enabledPluginRoot(env: Env = process.env): string | undefined {
   const currentRoot = runningPluginRoot(env);
   if (currentRoot) return currentRoot;
   const home = codexHome(env);
-  if (detectedRoots.has(home)) return detectedRoots.get(home) ?? undefined;
-  detectedRoots.set(home, null);
+  const known = detectedRoots.get(home);
+  if (known && Date.now() - known.at < DETECTION_TTL_MS) return known.root ?? undefined;
+  const remember = (root: string | undefined) => { detectedRoots.set(home, { root: root ?? null, at: Date.now() }); return root; };
+  remember(undefined);
   if (!existsSync(home)) return undefined;
   try {
     const output = execFileSync('codex', ['plugin', 'list', '--json'], {
@@ -51,15 +55,10 @@ export function enabledPluginRoot(env: Env = process.env): string | undefined {
       if (plugin.name !== 'jevcomp' || !plugin.enabled) continue;
       if (![plugin.marketplaceName, plugin.name, plugin.version].every((part) => /^[\w.+-]+$/.test(part))) continue;
       const root = join(pluginCacheRoot(env), plugin.marketplaceName, plugin.name, plugin.version);
-      if (existsSync(join(root, 'hooks', 'hooks.json'))) {
-        detectedRoots.set(home, root);
-        return root;
-      }
+      if (existsSync(join(root, 'hooks', 'hooks.json'))) return remember(root);
     }
   } catch {
-    const root = cachedPluginRoot(env);
-    detectedRoots.set(home, root ?? null);
-    return root;
+    return remember(cachedPluginRoot(env));
   }
   return undefined;
 }
