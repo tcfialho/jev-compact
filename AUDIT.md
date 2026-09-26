@@ -271,3 +271,9 @@ Claude Code already recovers what jevcomp restores in Codex, so porting the Code
 - `precompute` compactions are skipped so Claude Code does not prepare a model-written summary in the background.
 - Codex and Claude Code each start their own copy of the dashboard; a running one at the same or a newer version is reused instead of replaced.
 - Verified with Claude Code 2.1.283 and `--plugin-dir`: a manual `/compact` went from 47,690 to 7,408 tokens in 550 ms with no summary request.
+
+## 0.7.1 Dashboard per agent — 2026-09-26
+
+- A Codex | Claude Code switch at the top filters the whole dashboard by agent (`/api/stats?agent=`); it appears only when both are installed and defaults to the agent of the latest history row.
+- The Claude Code view talks about cutting, not sending, and hides `restore-mode` and `restore-max-chars`, which only the Codex restore flow uses.
+- Claude Code installation is read from `~/.claude/plugins/installed_plugins.json` and the function-hook flag in `~/.claude/settings.json`.

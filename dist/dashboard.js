@@ -43,8 +43,8 @@ function runKey(row) {
     return row.runId ?? `${row.sessionId}:${row.turnId ?? ''}:${row.at}`;
 }
 /** Build only measured statistics. No chars/4 or claimed Codex billing-token savings. */
-export async function stats(env = process.env) {
-    const rows = await readHistory(env);
+export async function stats(env = process.env, agent) {
+    const rows = (await readHistory(env)).filter((row) => !agent || (row.host ?? 'codex') === agent);
     const prepared = rows.filter((r) => r.status === 'prepared' && r.stats);
     const skipped = rows.filter((r) => r.status === 'skipped' && r.phase !== 'restore');
     const precompactFailures = rows.filter((r) => r.status === 'failed' && (r.phase === 'precompact' || !r.phase));
@@ -261,6 +261,7 @@ h1,h2,h3,p{margin:0}h2{font-size:17px;font-weight:650;letter-spacing:-.01em;text
 .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
 .shell{max-width:1120px;margin:auto;padding-inline:24px}
 .topbar{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;padding-block:24px 14px}
+.top-right{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .brand{display:flex;align-items:baseline;gap:12px}.brand b{font-family:var(--mono);font-size:18px;letter-spacing:-.02em}.brand span{font-size:12px;color:var(--muted)}
 .nav{display:flex;gap:4px;border-bottom:1px solid var(--line)}
 .nav button{all:unset;cursor:pointer;padding:10px 14px;color:var(--muted);font-weight:500;border-bottom:2px solid transparent;margin-bottom:-1px}
@@ -293,7 +294,7 @@ h1,h2,h3,p{margin:0}h2{font-size:17px;font-weight:650;letter-spacing:-.01em;text
 .kpi{display:grid;gap:4px}.kpi .label{font-size:12px;color:var(--muted)}.kpi .value{font-family:var(--mono);font-size:28px;font-weight:700;letter-spacing:-.03em}
 .kpi .value.accent{color:var(--accent)}.kpi .hint{font-size:12px;color:var(--muted)}
 .flow{display:grid;gap:14px}
-.flow-steps{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:10px}
+.flow-steps{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:10px}.flow-steps.two{grid-template-columns:1fr auto 1fr}
 .flow-step{display:grid;gap:4px;align-content:start;background:var(--raised);border-radius:10px;padding:14px}.flow-step .label,.flow-step .hint{font-size:12px;color:var(--muted)}.flow-step b{font-size:22px;font-weight:700}
 .flow-arrow{display:grid;justify-items:center;align-content:center;gap:4px;min-width:96px}.flow-arrow>span:first-child{color:var(--muted);font-size:18px}
 .flow-note{font-size:11px;color:var(--muted);text-align:center;line-height:1.35;max-width:100px}.flow-note b{color:var(--coral);font-weight:600}
@@ -349,7 +350,7 @@ table.rb th,table.rb td{white-space:nowrap}table.rb .rb-grow{width:100%}
 @media (max-width:760px){.shell{padding-inline:16px}.group{padding-inline:16px}.flow-steps{grid-template-columns:1fr}.flow-arrow>span:first-child{transform:rotate(90deg)}}
 </style></head><body>
 <div class="shell">
- <header class="topbar"><div class="brand"><b>jevcomp</b><span>compactação do Codex e do Claude Code</span></div><span class="small muted" id="live">dados locais</span></header>
+ <header class="topbar"><div class="brand"><b>jevcomp</b><span id="brand-sub">compactação do Codex e do Claude Code</span></div><div class="top-right"><div class="seg" id="agent-switch" role="group" aria-label="Agente" hidden><button type="button" data-agent="codex" aria-pressed="false">Codex</button><button type="button" data-agent="claude" aria-pressed="false">Claude Code</button></div><span class="small muted" id="live">dados locais</span></div></header>
  <nav class="nav" role="tablist" aria-label="Seções"><button role="tab" id="nav-geral" aria-controls="view-geral" aria-selected="true">Resumo</button><button role="tab" id="nav-config" aria-controls="view-config" aria-selected="false">Configurações</button></nav>
  <main class="content">
   <div id="error"></div>
@@ -369,10 +370,10 @@ table.rb th,table.rb td{white-space:nowrap}table.rb .rb-grow{width:100%}
     <div class="groups">
      <div class="card group"><div class="group-head"><h2>Conexão</h2><span class="small muted">Quem decide o que guardar</span></div>
       <div class="setting"><h3>Provedor</h3><p>OpenRouter e TypeSafe usam o mesmo modelo Jev. Escolha aquele em que você tem conta.</p><div id="connection" class="control"></div></div></div>
-     <div class="card group"><div class="group-head"><h2>Codex</h2><span class="small muted">Como o jevcomp está ligado ao Codex</span></div><div id="codex-info"></div></div>
+     <div id="agents-info" style="display:contents"></div>
     </div>
     <div class="groups">
-     <div class="card group"><div class="group-head"><h2>Comportamento</h2><span class="small muted">Cada mudança é salva na hora</span></div>
+     <div class="card group"><div class="group-head"><h2>Comportamento</h2><span class="small muted" id="behavior-sub">Cada mudança é salva na hora</span></div>
       <div id="behavior"></div>
       <div class="setting" id="reset-area"><h3>Voltar ao padrão</h3><p>Desfaz as mudanças acima. Provedor e chave continuam como estão.</p><div class="control"></div></div>
      </div>
@@ -401,11 +402,12 @@ function toast(text,bad){const el=$('#toast');el.textContent=text;el.className='
 
 const DECISION={k:['ok','Inteiro'],s:['short','Resumido'],r:['drop','Removido'],p:['pin','Recente']};
 const STATUS={restored:['ok','Enviado ao Codex','O Codex recebeu o que o resumo perdeu.'],nothing_missing:['skip','Não enviado: resumo já completo','O resumo do Codex já tinha tudo o que o Jev guardou; não havia o que enviar.'],skipped:['skip','Não enviado: pouco a cortar','Quase tudo ainda era útil: o corte ficaria abaixo do mínimo escolhido em Configurações.'],too_short:['skip','Não enviado: pouco a cortar','A conversa tinha menos de duas mensagens; não havia o que cortar.'],failed:['fail','Não enviado: erro','O jevcomp teve um erro antes da compactação e o Codex fez o resumo normal.'],restore_failed:['fail','Falha ao enviar','O jevcomp não conseguiu ler o que tinha guardado.'],ready:['wait','Aguardando envio','Vai junto do próximo prompt ou do início da próxima sessão.'],prepared:['wait','Aguardando a compactação','O Jev já escolheu; o Codex ainda está resumindo.']};
-const HOST={codex:'Codex',claude:'Claude'};
+const HOST={codex:'Codex',claude:'Claude Code'};
 const agentList=s=>[...new Set((s.runs||[]).map(r=>'o '+(HOST[r.host]||'Codex')))];
 const agents=s=>agentList(s).join(' e ')||'o Codex';
 const agentVerb=(s,one,many)=>agentList(s).length>1?many:one;
-const statusPill=r=>{const[cls,label,help]=(STATUS[r.status]||STATUS.prepared).map(t=>t.replace('Codex',HOST[r.host]||'Codex'));const detail=r.status==='failed'&&r.detail?help+' Motivo: '+r.detail:help;return '<span class="pill '+cls+'" title="'+esc(detail)+'">'+label+'</span>'};
+const CLAUDE_STATUS={restored:['ok','Cortado pelo Jev','O Claude Code ficou com a conversa cortada pelo Jev no lugar do resumo.']};
+const statusPill=r=>{const claude=r.host==='claude';const[cls,label,help]=((claude&&CLAUDE_STATUS[r.status])||STATUS[r.status]||STATUS.prepared).map(t=>{t=t.replace('Codex',HOST[r.host]||'Codex');return claude?t.replace('Não enviado','Sem corte'):t});const detail=r.status==='failed'&&r.detail?help+' Motivo: '+r.detail:help;return '<span class="pill '+cls+'" title="'+esc(detail)+'">'+label+'</span>'};
 const decisionPill=k=>'<span class="pill '+DECISION[k][0]+'">'+DECISION[k][1]+'</span>';
 
 let lastRun=null,lastRunJson='',tapeFocus=null,tapeSegs=[];
@@ -434,7 +436,7 @@ function renderLastRun(last){
  const sent=last.status==='restored'
   ?'<span class="sent-bar"><i style="width:'+Math.max(1,Math.min(100,last.injectedPayloadChars/Math.max(1,last.charsBefore)*100))+'%"></i></span><span class="num">'+f(last.injectedPayloadChars)+' de '+chars(last.charsBefore)+'</span>'
   :'<span></span>'+statusPill(last);
- $('#last-run').innerHTML=tape+'<div class="sent"><span class="sent-label">Enviado ao '+(HOST[last.host]||'Codex')+' depois da compactação</span>'+sent+'</div>';
+ $('#last-run').innerHTML=tape+'<div class="sent"><span class="sent-label">'+(last.host==='claude'?'Conversa que ficou no Claude Code depois do corte':'Enviado ao '+(HOST[last.host]||'Codex')+' depois da compactação')+'</span>'+sent+'</div>';
 }
 function setTapeFocus(k){tapeFocus=k;const tape=$('.tape');if(!tape)return;if(k)tape.dataset.focus=k;else delete tape.dataset.focus}
 $('#last-legend').addEventListener('mouseover',e=>{const tag=e.target.closest('[data-focus]');if(tag)setTapeFocus(tag.dataset.focus)});
@@ -458,7 +460,8 @@ addEventListener('resize',()=>{if(lastRun){lastRunJson='';renderLastRun(lastRun)
 function kpi(label,value,hint,accent){return '<div class="card kpi"><span class="label">'+label+'</span><span class="value'+(accent?' accent':'')+'">'+value+'</span><span class="hint">'+hint+'</span></div>'}
 function renderKpis(s){
  const c=s.runStatusCounts||{},n=k=>c[k]||0;
- const parts=[[n('restored'),'com envio','com envio'],[n('nothing_missing')+n('skipped')+n('too_short'),'não enviada','não enviadas'],[n('failed')+n('restore_failed'),'com erro','com erro'],[n('prepared')+n('ready'),'aguardando','aguardando']].filter(p=>p[0]>0).map(p=>plural(p[0],p[1],p[2]));
+ const claude=agent==='claude';
+ const parts=[[n('restored'),claude?'cortada':'com envio',claude?'cortadas':'com envio'],[n('nothing_missing')+n('skipped')+n('too_short'),claude?'sem corte':'não enviada',claude?'sem corte':'não enviadas'],[n('failed')+n('restore_failed'),'com erro','com erro'],[n('prepared')+n('ready'),'aguardando','aguardando']].filter(p=>p[0]>0).map(p=>plural(p[0],p[1],p[2]));
  $('#kpis').innerHTML=[
   kpi('Redução média',s.restored?pct(s.completedReductionRatio):'—',s.restored?'nas '+plural(s.restored,'compactação','compactações')+' em que o Jev cortou':'ainda sem compactação concluída',true),
   kpi('Compactações',f(s.attempts),parts.join(' · ')||'nenhuma ainda'),
@@ -473,12 +476,12 @@ function renderFlow(s){
  const read=s.completedCharsBefore,kept=s.completedCharsAfter,sent=s.injectedPayloadChars;
  const step=(label,n,hint)=>'<div class="flow-step"><span class="label">'+label+'</span><b class="num">'+f(n)+'</b><span class="hint">'+hint+'</span></div>';
  const arrow=(n,note)=>'<div class="flow-arrow"><span aria-hidden="true">→</span><span class="flow-note"><b class="num">−'+f(n)+'</b><br>'+note+'</span></div>';
- $('#flow').innerHTML='<div class="flow-steps">'
+ $('#flow').innerHTML='<div class="flow-steps'+(agent==='claude'?' two':'')+'">'
   +step('Texto da conversa analisado',read,'caracteres antes do corte')
   +arrow(Math.max(0,read-kept),'cortados pelo Jev')
   +step('Mantido pelo Jev',kept,'o que ainda é útil; o resto foi cortado')
-  +arrow(Math.max(0,kept-sent),'já no resumo ou acima do limite')
-  +step('Enviado ao '+hosts,sent,'o que o resumo perdeu, dentro do limite')+'</div>';
+  +(agent==='claude'?'':arrow(Math.max(0,kept-sent),'já no resumo ou acima do limite')
+  +step('Enviado ao '+hosts,sent,'o que o resumo perdeu, dentro do limite'))+'</div>';
 }
 function renderRuns(runs){
  const shown=runs.filter(r=>r.status!=='ready'&&r.status!=='prepared').slice(0,10),max=Math.max(1,...shown.map(r=>r.charsBefore||0));
@@ -504,7 +507,7 @@ function renderDecisions(){
 }
 $('.filters').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;decisionFilter=b.dataset.filter;document.querySelectorAll('.filters button').forEach(o=>o.setAttribute('aria-pressed',String(o===b)));renderDecisions()});
 function refresh(){
- return fetch('/api/stats',{cache:'no-store'}).then(r=>{if(!r.ok)throw Error('HTTP '+r.status);return r.json()}).then(s=>{
+ return fetch('/api/stats'+(agent?'?agent='+agent:''),{cache:'no-store'}).then(r=>{if(!r.ok)throw Error('HTTP '+r.status);return r.json()}).then(s=>{
   $('#error').innerHTML='';
   renderLastRun(s.lastCompaction);
   renderKpis(s);
@@ -515,16 +518,34 @@ function refresh(){
  });
 }
 function showError(error){$('#error').innerHTML='<div class="error">Erro ao ler dados: '+esc(String(error))+'</div>'}
-refresh().catch(showError);
+let agent=null;
+function remembered(){try{return localStorage.getItem('jevcomp-agent')}catch{return null}}
+function pickAgent(id){
+ agent=id;try{localStorage.setItem('jevcomp-agent',id)}catch{}
+ document.querySelectorAll('#agent-switch button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.agent===id)));
+ $('#brand-sub').textContent='compactação do '+AGENT_TITLE[id];
+ refresh().catch(showError);
+ if(!$('#view-config').hidden)loadSettings();
+}
+$('#agent-switch').addEventListener('click',e=>{const b=e.target.closest('[data-agent]');if(b&&b.dataset.agent!==agent)pickAgent(b.dataset.agent)});
+fetch('/api/settings',{cache:'no-store'}).then(r=>r.json()).then(s=>{
+ const ids=installedAgents(s);
+ $('#agent-switch').hidden=ids.length<2;
+ const saved=new URLSearchParams(location.search).get('agent')||remembered();
+ pickAgent(ids.includes(saved)?saved:ids.includes(s.lastAgent)?s.lastAgent:ids[0]||'codex');
+}).catch(()=>refresh().catch(showError));
 setInterval(()=>refresh().catch(showError),5000);
 
 const SETTING_TEXT={
- 'restore-mode':{title:'Quanto texto enviar ao Codex',help:'Depois da compactação, o jevcomp envia ao Codex o que o resumo perdeu. Todo o texto: envia tudo, até o limite abaixo. Parte do texto: envia a lista e um trecho. Só a lista: envia apenas os nomes dos comandos e arquivos guardados e onde estão salvos no seu computador; o Codex abre o texto completo só se precisar.',label:v=>({preserve:'Todo o texto',balanced:'Parte do texto',minimal:'Só a lista'})[v]||v},
- 'restore-max-chars':{title:'Limite de texto enviado ao Codex',help:'O máximo de texto que o jevcomp envia ao Codex depois de cada compactação, em caracteres. Mais alto mantém mais detalhes, mas ocupa mais espaço na conversa.',label:v=>Number(v)===0?'Sem limite':f(Number(v)/1000)+'k',numbers:true},
+ 'restore-mode':{codexOnly:true,title:'Quanto texto enviar ao Codex',help:'Depois da compactação, o jevcomp envia ao Codex o que o resumo perdeu. Todo o texto: envia tudo, até o limite abaixo. Parte do texto: envia a lista e um trecho. Só a lista: envia apenas os nomes dos comandos e arquivos guardados e onde estão salvos no seu computador; o Codex abre o texto completo só se precisar.',label:v=>({preserve:'Todo o texto',balanced:'Parte do texto',minimal:'Só a lista'})[v]||v},
+ 'restore-max-chars':{codexOnly:true,title:'Limite de texto enviado ao Codex',help:'O máximo de texto que o jevcomp envia ao Codex depois de cada compactação, em caracteres. Mais alto mantém mais detalhes, mas ocupa mais espaço na conversa.',label:v=>Number(v)===0?'Sem limite':f(Number(v)/1000)+'k',numbers:true},
  'pin-recent-messages':{title:'Mensagens recentes que nunca são cortadas',help:'As mensagens mais novas ficam sempre inteiras. Mais alto é mais seguro; mais baixo deixa o jevcomp cortar mais.',label:v=>String(v),numbers:true},
- 'loss-threshold':{title:'Quanto cortar',help:'O Jev estima o risco de cortar algo que o Codex ainda vai usar. Pouco: só corta o que tem risco baixo. Muito: corta mais.',label:v=>({0.3:'Pouco',0.5:'Normal',0.7:'Muito'})[Number(v)]||String(v)},
+ 'loss-threshold':{title:'Quanto cortar',help:'O Jev estima o risco de cortar algo que AGENT ainda vai usar. Pouco: só corta o que tem risco baixo. Muito: corta mais.',label:v=>({0.3:'Pouco',0.5:'Normal',0.7:'Muito'})[Number(v)]||String(v)},
  'min-reduction-ratio':{title:'Só agir se cortar pelo menos',help:'Se o corte diminuir o texto menos que isso, o jevcomp não faz nada naquela compactação.',label:v=>Math.round(Number(v)*100)+'%',numbers:true}
 };
+const AGENT_NAME={codex:'o Codex',claude:'o Claude Code'};
+const installedAgents=s=>Object.keys(AGENT_NAME).filter(id=>s.agents[id]);
+const AGENT_TITLE={codex:'Codex',claude:'Claude Code'};
 const PROVIDER_NAME={openrouter:'OpenRouter',typesafe:'TypeSafe'};
 let settingsState=null,pendingProvider=null,changingKey=false;
 const info=(label,value)=>'<div class="info"><span>'+label+'</span><b>'+value+'</b></div>';
@@ -536,7 +557,7 @@ function renderConnection(){
  const seg='<div class="seg" role="group" aria-label="Provedor"'+(locked?' aria-disabled="true"':'')+'>'+Object.keys(PROVIDER_NAME).map(id=>'<button type="button" data-pick="'+id+'" aria-pressed="'+(id===shown)+'"'+(locked?' disabled':'')+'>'+PROVIDER_NAME[id]+'</button>').join('')+'</div>';
  let body;
  if(key.source==='none')body=info('Chave','<span class="none">Sem chave</span>')+'<p class="conn-note warn">O jevcomp fica parado até você salvar a chave do '+name+'.</p>'+keyForm(name,false);
- else if(key.source==='environment')body=info('Chave','••••'+esc(key.ending||''))+'<p class="conn-note">Definida na variável '+esc(key.variable)+' '+SYSTEM+'. Para trocar, mude a variável e reinicie o Codex.</p>';
+ else if(key.source==='environment')body=info('Chave','••••'+esc(key.ending||''))+'<p class="conn-note">Definida na variável '+esc(key.variable)+' '+SYSTEM+'. Para trocar, mude a variável e reinicie '+AGENT_NAME[agent]+'.</p>';
  else body=info('Chave','••••'+esc(key.ending||'')+' · salva neste computador')+(changingKey?keyForm(name,true):'<div class="key-actions"><button class="btn" type="button" data-change>Trocar chave</button></div>');
  const last=s.lastJev?(s.lastJev.ok?'Funcionou · ':'Falhou · ')+ago(s.lastJev.at):'Ainda nenhum';
  const lockNote=locked?'<p class="note" style="margin-top:10px">Definido pela variável '+esc(s.providerLockedBy)+' no seu sistema.</p>':'';
@@ -545,18 +566,29 @@ function renderConnection(){
 function renderSettings(s){
  settingsState=s;
  renderConnection();
- const latest=Object.values(s.hooks.activity||{}).sort().pop();
- $('#codex-info').innerHTML=info('Instalação',(s.installation.kind==='plugin'?'Plugin do Codex':'Comando jevcomp')+' · '+esc(s.installation.version))
-  +'<div class="info"><span>Hooks</span><span class="pill '+(s.hooks.installed>=s.hooks.total?'ok':'fail')+'">'+s.hooks.installed+' de '+s.hooks.total+' instalados</span></div>'
-  +info('Último sinal dos hooks',latest?esc(ago(latest)):'Ainda nenhum')
-  +'<div class="info"><span>Dashboard</span><b class="num">'+esc(s.dashboardUrl)+'</b></div>';
- $('#behavior').innerHTML=s.settings.map(item=>{
+ const card=(title,sub,body)=>'<div class="card group"><div class="group-head"><h2>'+title+'</h2><span class="small muted">'+sub+'</span></div>'+body+'</div>';
+ const version=' · '+esc(s.version),codex=agent==='codex'&&s.agents.codex,claude=agent==='claude'&&s.agents.claude;
+ let cards='';
+ if(codex){
+  const latest=Object.values(codex.hooks.activity||{}).sort().pop();
+  cards+=card('Codex','Como o jevcomp está ligado ao Codex',info('Instalação',(codex.kind==='plugin'?'Plugin do Codex':'Comando jevcomp')+version)
+   +'<div class="info"><span>Hooks</span><span class="pill '+(codex.hooks.installed>=codex.hooks.total?'ok':'fail')+'">'+codex.hooks.installed+' de '+codex.hooks.total+' instalados</span></div>'
+   +info('Último sinal dos hooks',latest?esc(ago(latest)):'Ainda nenhum'));
+ }
+ if(claude)cards+=card('Claude Code','Como o jevcomp está ligado ao Claude Code',info('Instalação','Plugin do Claude Code'+version)
+  +'<div class="info"><span>Compactação pelo jevcomp</span><span class="pill '+(claude.functionHooks?'ok':'fail')+'">'+(claude.functionHooks?'Ligada':'Desligada')+'</span></div>'
+  +(claude.functionHooks?'':'<p class="conn-note warn">Abra uma sessão nova do Claude Code: o jevcomp liga a compactação sozinho e pede para reiniciar uma vez.</p>')
+  +info('Última compactação',claude.lastRun?esc(ago(claude.lastRun)):'Ainda nenhuma'));
+ if(!codex&&!claude)cards+=card(AGENT_TITLE[agent],'Como o jevcomp está ligado ao '+AGENT_TITLE[agent],'<p class="conn-note warn">O jevcomp não está instalado no '+AGENT_TITLE[agent]+'.</p>');
+ $('#agents-info').innerHTML=cards+card('Dashboard','Este painel','<div class="info"><span>Endereço</span><b class="num">'+esc(s.dashboardUrl)+'</b></div>');
+ $('#behavior-sub').textContent=installedAgents(s).length>1?'Vale para o Codex e o Claude Code · salvo na hora':'Cada mudança é salva na hora';
+ $('#behavior').innerHTML=s.settings.filter(item=>agent==='codex'||!SETTING_TEXT[item.name].codexOnly).map(item=>{
   const text=SETTING_TEXT[item.name];
   const choices=item.choices.some(c=>same(c,item.value))?item.choices:item.choices.concat([item.value]);
   const locked=!!item.lockedBy;
   const buttons=choices.map(c=>'<button type="button" data-value="'+esc(c)+'" aria-pressed="'+same(c,item.value)+'"'+(locked?' disabled':'')+'>'+esc(text.label(c))+'</button>').join('');
-  const note=locked?'<span class="note">Definido pela variável '+esc(item.lockedBy)+' no seu sistema. Remova a variável para mudar aqui.</span>':'';
-  return '<div class="setting"><h3>'+text.title+'</h3><p>'+text.help+'</p><div class="control seg'+(text.numbers?' numbers':'')+'" role="group" aria-label="'+text.title+'" data-name="'+item.name+'"'+(locked?' aria-disabled="true"':'')+'>'+buttons+'</div>'+note+'</div>';
+  const note=(locked?'<span class="note">Definido pela variável '+esc(item.lockedBy)+' no seu sistema. Remova a variável para mudar aqui.</span>':'');
+  return '<div class="setting"><h3>'+text.title+'</h3><p>'+text.help.replace('AGENT',AGENT_NAME[agent])+'</p><div class="control seg'+(text.numbers?' numbers':'')+'" role="group" aria-label="'+text.title+'" data-name="'+item.name+'"'+(locked?' aria-disabled="true"':'')+'>'+buttons+'</div>'+note+'</div>';
  }).join('');
 }
 function loadSettings(){return fetch('/api/settings',{cache:'no-store'}).then(r=>r.json()).then(renderSettings).catch(e=>toast('Erro ao ler as configurações: '+e.message,true))}
@@ -617,9 +649,8 @@ function json(res, value, status = 200) {
 }
 export async function startDashboard(port = 43127, env = process.env) {
     const host = '127.0.0.1';
-    let cachedIdentity = '';
-    let cachedStats;
-    const currentStats = async () => {
+    const cached = new Map();
+    const currentStats = async (agent) => {
         const identityPart = async (path) => {
             try {
                 const info = await stat(path);
@@ -632,11 +663,12 @@ export async function startDashboard(port = 43127, env = process.env) {
         // Dashboard content depends on both history and the persisted user-facing settings.
         const historyIdentity = await Promise.all(readableHistoryPaths(env).map(identityPart));
         const identity = `${historyIdentity.join('|')}|${await identityPart(settingsPath(env))}`;
-        if (cachedStats && identity === cachedIdentity)
-            return cachedStats;
-        cachedStats = await stats(env);
-        cachedIdentity = identity;
-        return cachedStats;
+        const hit = cached.get(agent ?? '');
+        if (hit?.identity === identity)
+            return hit.stats;
+        const fresh = await stats(env, agent);
+        cached.set(agent ?? '', { identity, stats: fresh });
+        return fresh;
     };
     const token = randomUUID();
     // Checking Host blocks DNS-rebinding pages; the token and Origin stop other sites from changing settings.
@@ -672,8 +704,10 @@ export async function startDashboard(port = 43127, env = process.env) {
                     entry: process.argv[1] ?? null,
                     version: VERSION,
                 });
-            if (url.pathname === '/api/stats')
-                return json(res, await currentStats());
+            if (url.pathname === '/api/stats') {
+                const agent = url.searchParams.get('agent');
+                return json(res, await currentStats(agent === 'codex' || agent === 'claude' ? agent : undefined));
+            }
             if (url.pathname === '/api/history')
                 return json(res, (await readHistory(env)).slice(-200).reverse());
             if (url.pathname !== '/')

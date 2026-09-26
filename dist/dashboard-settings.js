@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { dashboardPort } from './dashboard-service.js';
 import { inspectHooks } from './install.js';
@@ -19,10 +20,27 @@ async function pluginHookCount(pluginRoot) {
     }
     return 0;
 }
+async function readJson(path) {
+    try {
+        return JSON.parse(await readFile(path, 'utf8')) ?? {};
+    }
+    catch {
+        return {};
+    }
+}
+async function claudeInstallation(env) {
+    const home = env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude');
+    const installed = (await readJson(join(home, 'plugins', 'installed_plugins.json'))).plugins ?? {};
+    const settings = await readJson(join(home, 'settings.json'));
+    const ids = Object.keys(installed).filter((id) => id.startsWith('jevcomp@') && settings.enabledPlugins?.[id] !== false);
+    return ids.length ? { functionHooks: settings.env?.CLAUDE_CODE_ENABLE_FUNCTION_HOOKS === '1' } : null;
+}
 export async function settingsSnapshot(env = process.env) {
     const settings = userSettings(env);
     const pluginRoot = enabledPluginRoot(env);
     const history = await readHistory(env);
+    const codexHooks = pluginRoot ? await pluginHookCount(pluginRoot) : (await inspectHooks(env)).events.length;
+    const claude = await claudeInstallation(env);
     const lastJev = [...history].reverse().find((row) => row.phase === 'precompact' || (!row.phase && row.status === 'failed'));
     const settingValue = {
         'restore-mode': settings.restoreMode,
@@ -36,11 +54,11 @@ export async function settingsSnapshot(env = process.env) {
         providerLockedBy: env.JEVCOMP_PROVIDER ? 'JEVCOMP_PROVIDER' : undefined,
         keys: { openrouter: keyStatus('openrouter', env), typesafe: keyStatus('typesafe', env) },
         lastJev: lastJev ? { at: lastJev.at, ok: lastJev.status !== 'failed', detail: lastJev.status === 'failed' ? lastJev.detail : undefined } : null,
-        installation: { kind: pluginRoot ? 'plugin' : 'command', version: VERSION },
-        hooks: {
-            installed: pluginRoot ? await pluginHookCount(pluginRoot) : (await inspectHooks(env)).events.length,
-            total: 4,
-            activity: await readHookActivity(env),
+        version: VERSION,
+        lastAgent: history.length ? history[history.length - 1].host ?? 'codex' : null,
+        agents: {
+            codex: codexHooks ? { kind: pluginRoot ? 'plugin' : 'command', hooks: { installed: codexHooks, total: 4, activity: await readHookActivity(env) } } : null,
+            claude: claude ? { ...claude, lastRun: [...history].reverse().find((row) => row.host === 'claude')?.at ?? null } : null,
         },
         dashboardUrl: `http://127.0.0.1:${dashboardPort(env)}/`,
         settings: SETTINGS_ITEMS.map((item) => ({

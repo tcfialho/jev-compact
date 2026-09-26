@@ -12,14 +12,21 @@ export interface SettingsSnapshot {
         ok: boolean;
         detail?: string;
     } | null;
-    installation: {
-        kind: 'plugin' | 'command';
-        version: string;
-    };
-    hooks: {
-        installed: number;
-        total: number;
-        activity: HookActivity;
+    version: string;
+    lastAgent: 'codex' | 'claude' | null;
+    agents: {
+        codex: {
+            kind: 'plugin' | 'command';
+            hooks: {
+                installed: number;
+                total: number;
+                activity: HookActivity;
+            };
+        } | null;
+        claude: {
+            functionHooks: boolean;
+            lastRun: string | null;
+        } | null;
     };
     dashboardUrl: string;
     settings: Array<{

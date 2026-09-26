@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,7 +11,7 @@ import { VERSION } from '../dist/version.js';
 
 async function dashboard(t, extra = {}) {
   const root = await mkdtemp(join(tmpdir(), 'jevcomp-dash-settings-'));
-  const env = { JEVCOMP_DATA_DIR: join(root, 'data'), JEVCOMP_CONFIG_DIR: join(root, 'config'), CODEX_HOME: join(root, 'codex'), ...extra };
+  const env = { JEVCOMP_DATA_DIR: join(root, 'data'), JEVCOMP_CONFIG_DIR: join(root, 'config'), CODEX_HOME: join(root, 'codex'), CLAUDE_CONFIG_DIR: join(root, 'claude'), ...extra };
   const { server, url } = await startDashboard(0, env);
   t.after(() => server.close());
   const html = await fetch(url).then((response) => response.text());
@@ -27,13 +27,25 @@ async function dashboard(t, extra = {}) {
 test('settings page changes a setting and reports it back', async (t) => {
   const { env, html, post } = await dashboard(t);
   assert.match(html, /Configurações/);
-  assert.match(html, /id="codex-info"/);
+  assert.match(html, /id="agents-info"/);
   const response = await post({ action: 'setting', name: 'restore-mode', value: 'minimal' });
   assert.equal(response.status, 200);
   const snapshot = await response.json();
   assert.equal(snapshot.settings.find((item) => item.name === 'restore-mode').value, 'minimal');
   assert.equal(userSettings(env).restoreMode, 'minimal');
-  assert.equal(snapshot.installation.version, VERSION);
+  assert.equal(snapshot.version, VERSION);
+  assert.deepEqual(snapshot.agents, { codex: null, claude: null });
+});
+
+test('a Claude Code install is reported without Codex', async (t) => {
+  const claudeDir = join(await mkdtemp(join(tmpdir(), 'jevcomp-claude-')), '.claude');
+  await mkdir(join(claudeDir, 'plugins'), { recursive: true });
+  await writeFile(join(claudeDir, 'plugins', 'installed_plugins.json'), JSON.stringify({ plugins: { 'jevcomp@jevcomp': [{ version: VERSION }] } }));
+  await writeFile(join(claudeDir, 'settings.json'), JSON.stringify({ enabledPlugins: { 'jevcomp@jevcomp': true }, env: { CLAUDE_CODE_ENABLE_FUNCTION_HOOKS: '1' } }));
+  const { post } = await dashboard(t, { CLAUDE_CONFIG_DIR: claudeDir });
+  const snapshot = await (await post({ action: 'reset' })).json();
+  assert.equal(snapshot.agents.codex, null);
+  assert.deepEqual(snapshot.agents.claude, { functionHooks: true, lastRun: null });
 });
 
 test('a key saved from the page is shown only by its last four characters', async (t) => {

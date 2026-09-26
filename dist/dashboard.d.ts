@@ -55,7 +55,7 @@ interface LastCompaction {
 }
 type DecisionCode = 'k' | 's' | 'r' | 'p';
 /** Build only measured statistics. No chars/4 or claimed Codex billing-token savings. */
-export declare function stats(env?: Record<string, string | undefined>): Promise<{
+export declare function stats(env?: Record<string, string | undefined>, agent?: 'codex' | 'claude'): Promise<{
     measured: boolean;
     note: string;
     attempts: number;
