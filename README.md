@@ -1,303 +1,176 @@
 # jevcomp
 
-When a Codex conversation gets long, Codex **compacts** it: it swaps the old history for a short summary so it can keep working. Exact details often get lost in that summary (an error message, a file it already read, a test result), and Codex may have to fetch them again.
+When a conversation gets long, Codex and Claude Code **compact** it: they replace the old history with a summary written by the model. Exact details get lost that way (an error message, a file already read, a test result), and writing the summary costs a large request.
 
-jevcomp works alongside Codex:
+jevcomp uses **Jev**, a small, fast AI model that only answers yes/no questions, to decide which old command outputs still matter:
 
-1. Right before compaction, it asks **Jev** (a small, fast AI model that only answers yes/no style questions) which old command outputs still matter.
-2. Codex compacts as usual.
-3. Right after, jevcomp adds back only the useful details the summary lost.
+- **Codex:** Codex still writes its summary. Right after, jevcomp adds back the useful details the summary lost.
+- **Claude Code:** there is no summary. Jev removes or shortens old command outputs and the rest of the conversation stays word for word, which also skips the summary request.
 
-Your own messages are never removed. If anything goes wrong, Codex simply compacts as it normally would.
+Your own messages are never removed. If anything fails, the agent compacts the way it normally does. Each compaction makes a few small Jev requests, billed to your OpenRouter or TypeSafe key.
 
-jevcomp also works in Claude Code, where it replaces the summary instead: Jev cuts old command outputs and the rest of the conversation is kept word for word (see [Option 3](#option-3-claude-code-plugin)).
+## Before you start
 
-Good to know:
+- **Node.js 20 or newer** ([nodejs.org](https://nodejs.org)).
+- **Git**, used to download the plugin.
+- An **API key** from [OpenRouter](https://openrouter.ai/keys) or TypeSafe.
 
-- In Codex it does **not** make compaction itself use fewer tokens. It adds back a limited amount of text (60,000 characters at most by default) so Codex loses less and redoes less work.
-- Each compaction may make a few small paid Jev requests, billed to your OpenRouter or TypeSafe key.
-- The dashboard, a page in your browser at http://127.0.0.1:43127/, shows what it actually did in your sessions.
+Codex and Claude Code can both use jevcomp on the same computer. They share the key, the settings, the history and the dashboard.
 
-## Install
+## Codex
 
-You need:
+### Install
 
-- **Node.js 20 or newer**, free from [nodejs.org](https://nodejs.org).
-- **Git**, which Codex and Claude Code use to download plugins.
-- An **API key** (a password-like code) from [OpenRouter](https://openrouter.ai/keys) or TypeSafe.
+Pick one way.
 
-Pick **one** of the three ways below. npm sets up Codex, Claude Code or both; the plugins set up one each, and you can have both.
-
-Used the old name `jev-compact`? Install `jevcomp` the same way. Your saved key, settings, history and old hooks are picked up automatically; then remove the old plugin with `codex plugin remove jev-compact@jev-compact`.
-
-### Option 1: Codex plugin (recommended)
-
-In a terminal:
+**Plugin (recommended).** In a terminal:
 
 ```bash
 codex plugin marketplace add jevcomp/jevcomp
 codex plugin add jevcomp@jevcomp
 ```
 
-Then, in Codex:
+Then, in Codex, ask `Configure jevcomp with OpenRouter` (or `with TypeSafe`) and type your key where the terminal asks for it. Finally type `/hooks` and approve the four jevcomp hooks.
 
-1. Ask: `Configure jevcomp with OpenRouter` (or `with TypeSafe`) and paste the key where the terminal asks for it.
-2. Type `/hooks` and approve the four jevcomp hooks.
-
-Updating from a version before 0.7.0? Approve the four hooks in `/hooks` again: their file changed, and Codex asks again for a changed file.
-
-### Option 2: npm, for Codex, Claude Code or both (also gives you the `jevcomp` terminal command)
+**npm.** Also gives you the `jevcomp` command:
 
 ```bash
 npm install -g --install-links github:jevcomp/jevcomp
-jevcomp install
+jevcomp install openrouter codex
 ```
 
-`install` asks where to install (Codex, Claude Code or both), then OpenRouter or TypeSafe and your key. To skip the questions: `jevcomp install openrouter claude` (or `codex`, or `all`).
+Use `typesafe` if your key is from TypeSafe. Restart Codex, type `/hooks` and approve the four hooks.
 
-- Codex: restart Codex, type `/hooks` and approve the four hooks.
-- Claude Code: `install` adds the Claude Code plugin and turns on its function hooks (see Option 3); restart Claude Code.
+### Check
 
-Run `jevcomp install` again anytime to change the provider or key.
+Ask Codex `Check jevcomp` (npm: `jevcomp doctor`). It is working when Codex shows `jevcomp dashboard: http://127.0.0.1:43127/` as a session starts.
 
-Keep `--install-links`: without it, current npm versions install a broken link.
+### Uninstall
 
-### Option 3: Claude Code plugin
+| Installed with | Run | What it removes |
+| --- | --- | --- |
+| Plugin | Ask Codex `Uninstall jevcomp` | The plugin and its marketplace; stops the dashboard unless Claude Code still uses it |
+| Plugin, from a terminal | `codex plugin remove jevcomp@jevcomp` then `codex plugin marketplace remove jevcomp` | The plugin and its marketplace; the dashboard stops when you restart the computer |
+| npm | `jevcomp uninstall codex` | The four hooks; stops the dashboard unless Claude Code still uses it |
 
-In a terminal:
+## Claude Code
+
+### Install
+
+Pick one way.
+
+**Plugin.** In a terminal:
 
 ```bash
 claude plugin marketplace add jevcomp/jevcomp
 claude plugin install jevcomp@jevcomp
 ```
 
-Claude Code asks for the provider and key; leave the key empty if `OPENROUTER_API_KEY` or `TYPESAFE_API_KEY` is already set, or if jevcomp is already set up for Codex. The plugin uses Claude Code's early-access function hooks, which Claude Code turns on only at startup. The first time you open Claude Code after installing, jevcomp adds this to `~/.claude/settings.json` for you and asks you to restart Claude Code once:
+**npm.** Also gives you the `jevcomp` command:
 
-```json
-{ "env": { "CLAUDE_CODE_ENABLE_FUNCTION_HOOKS": "1" } }
+```bash
+npm install -g --install-links github:jevcomp/jevcomp
+jevcomp install openrouter claude
 ```
 
-If that file cannot be read as JSON, jevcomp leaves it alone and asks you to add the line yourself.
+Open Claude Code. The first time, jevcomp asks you to restart it once; after that it is on.
 
-Here jevcomp works differently from Codex: when Claude Code compacts, Jev removes or shortens old tool output and the rest of the conversation stays word for word, instead of Claude writing a summary. That skips the summary request, which reads the whole conversation. When the cut is too small, or anything fails, Claude Code writes its usual summary.
+The key comes from the one saved by `jevcomp install` or for Codex, or from `OPENROUTER_API_KEY` / `TYPESAFE_API_KEY`. If you have none of these, run `/plugin configure jevcomp@jevcomp` in Claude Code and enter it there.
 
-Codex and Claude Code can both have jevcomp on the same computer: they share one dashboard, one set of settings and one history.
+### Check
 
-### Check that it works
-
-- npm: `jevcomp doctor`
-- Plugin: in Codex or Claude Code, ask `Check jevcomp`. The plugins do not add a `jevcomp` terminal command, so `jevcomp doctor` is only for npm installs.
-
-Either way you learn whether your key is set and the dashboard address. With the plugin, Codex also asks you to type `/hooks` and confirm the four jevcomp hooks are active.
-
-The installation worked when, after restarting Codex or Claude Code, it shows `jevcomp dashboard: http://127.0.0.1:43127/` as the session starts: that message comes from the jevcomp hooks, so they are running (see [Dashboard](#dashboard)).
+Ask Claude Code `Check jevcomp` (npm: `jevcomp doctor`). It is working when Claude Code shows `jevcomp dashboard: http://127.0.0.1:43127/` as a session starts.
 
 ### Uninstall
 
-- Plugin: in Codex, ask `Uninstall jevcomp`. Or, in a terminal: `codex plugin remove jevcomp@jevcomp` and `codex plugin marketplace remove jevcomp`; this way the dashboard keeps running until you restart the computer.
-- npm: `jevcomp uninstall` removes jevcomp from Codex and Claude Code; `jevcomp uninstall codex` or `jevcomp uninstall claude` removes it from one only. Then `npm uninstall -g jevcomp`.
-- Claude Code: `claude plugin uninstall jevcomp@jevcomp` and `claude plugin marketplace remove jevcomp`; the dashboard keeps running until you restart the computer. The `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS` line stays in `~/.claude/settings.json`; remove it if no other plugin needs it.
+| Installed with | Run | What it removes |
+| --- | --- | --- |
+| Plugin | `claude plugin uninstall jevcomp@jevcomp` then `claude plugin marketplace remove jevcomp` | The plugin and its marketplace; the dashboard stops when you restart the computer |
+| npm | `jevcomp uninstall claude` | The plugin and its marketplace; stops the dashboard unless Codex still uses it |
 
-Asking Codex and `jevcomp uninstall` also stop the dashboard, unless the other agent still uses jevcomp. Your key, settings and history are kept, in `~/.config/jevcomp` and `~/.jevcomp`; delete those folders to erase them too.
+## Both with npm
 
-Commands below are written as `jevcomp ...`. With a plugin only, ask Codex or Claude Code to run them for you.
-
-## What Jev is doing
-
-Jev is used as a fast **judge**, not as the coding model. For each completed tool call/result pair it answers two questions:
-
-1. Would removing this call and result lose information still needed for the task?
-2. Would shortening only the result lose information still needed?
-
-Jev receives a bounded text view of the conversation and tool evidence. Common credential patterns are redacted from that provider-bound view, but the redaction cannot recognize every possible secret.
-
-That produces three practical outcomes:
-
-| Decision | What happens |
-| --- | --- |
-| **Keep** | Call and complete result remain in the retained evidence. |
-| **Shorten** | Call remains; a long result keeps a bounded prefix plus a recovery note. |
-| **Remove** | Call and result are omitted from `jevcomp`'s retained evidence. The tool can be rerun if needed. |
-
-Recent messages are pinned and never pruned.
-
-## How it fits into Codex
-
-Current Codex does not let a `PreCompact` command hook replace the history that Codex itself will compact. `jevcomp` therefore wraps native compaction instead of replacing it:
-
-```text
-PreCompact
-    ↓
-Jev selects exact evidence worth preserving
-    ↓
-Codex native compaction runs normally
-    ↓
-PostCompact confirms success
-    ↓
-SessionStart(source=compact)
-    ↓
-exact post-compaction membership check
-    ↓
-only selected evidence still missing is restored once
+```bash
+npm install -g --install-links github:jevcomp/jevcomp
+jevcomp install
 ```
 
-`UserPromptSubmit` is a recovery path if the compact `SessionStart` delivery is missed.
+`install` asks where to install (answer both), the provider and the key. `jevcomp uninstall` removes jevcomp from both and stops the dashboard.
 
-If Jev fails, a key is missing, the rollout cannot be reconstructed safely, or the reduction is too small, the hook **fails open** and Codex continues with its native compaction.
+## Remove everything
+
+1. Uninstall from each agent as shown above, or run `jevcomp uninstall` if you used npm.
+2. With npm, remove the command: `npm uninstall -g jevcomp`.
+3. Delete your key and settings, `~/.config/jevcomp`, and your history, `~/.jevcomp`.
+4. Claude Code only: remove the `"CLAUDE_CODE_ENABLE_FUNCTION_HOOKS": "1"` line that jevcomp added under `env` in `~/.claude/settings.json`, unless another plugin needs it.
 
 ## Dashboard
 
-Open **http://127.0.0.1:43127/** in your browser. It starts by itself when a Codex session starts, and Codex shows the address. It keeps running until you restart the computer; after an update, the next Codex session switches it to the new version.
+Open **http://127.0.0.1:43127/**. It starts by itself when a Codex or Claude Code session starts and keeps running until you restart the computer.
 
-- Forgot the address? `jevcomp doctor` shows it (plugin: ask Codex `Where is the jevcomp dashboard?`).
-- Restart it: `jevcomp dashboard` (plugin: ask Codex to restart the jevcomp dashboard).
-- Port: `43127` by default. To use another, set `JEVCOMP_DASHBOARD_PORT`, for example `JEVCOMP_DASHBOARD_PORT=43200`.
+- Forgot the address? Ask the agent `Where is the jevcomp dashboard?` (npm: `jevcomp doctor`).
+- Restart it: `jevcomp dashboard`, or ask the agent to restart the jevcomp dashboard.
+- Another port: set `JEVCOMP_DASHBOARD_PORT`, for example `43200`.
 
-The dashboard shows values that `jevcomp` can actually measure:
+It shows only what jevcomp can measure: characters before and after each compaction, what was sent back, each Keep / Shorten / Remove decision with its risk, Jev requests and tokens, and runs that were skipped or failed. It does not estimate billing-token savings.
 
-- characters present before and after Jev selection;
-- exact characters removed from retained tool history;
-- how much Jev-selected evidence was not sent because it was already present verbatim after native Codex compaction or went over the limit;
-- the evidence actually returned to Codex after compaction;
-- real Jev input token usage when the provider returns usage counters;
-- Jev request count;
-- native fallbacks, skips and restore errors separately;
-- recent Keep / Shorten / Remove decisions and their Jev loss-risk values;
-- recent compaction runs and whether evidence was sent to Codex.
+## Settings
 
-It deliberately **does not claim Codex billing-token savings** from a `characters ÷ 4` estimate. Hook mode cannot observe Codex's final billing tokenizer/cache accounting, so the dashboard keeps those numbers separate from what is actually measured.
+Run `jevcomp settings`, use the **Configurações** page of the dashboard, or ask the agent to change a jevcomp setting. The defaults suit most people.
 
-## Why post-compaction dedupe is conservative
+| Setting | Default | Meaning |
+| --- | ---: | --- |
+| `restore-mode` | `preserve` | Codex only. How much is added back: `preserve` (all selected text), `balanced` (a list plus an excerpt), `minimal` (only the list). |
+| `restore-max-chars` | `60000` | Codex only. Most characters added back after a compaction; `0` removes the limit. |
+| `pin-recent-messages` | `6` | Newest messages Jev never touches. |
+| `loss-threshold` | `0.5` | Jev removes or shortens an output only when its risk of losing something still needed is below this. Higher cuts more. |
+| `min-reduction-ratio` | `0.15` | jevcomp acts only when it cuts at least this share of the text. |
 
-The optimization does not ask another model whether two pieces of text are "basically the same". It only suppresses extra reinjection when there is objective evidence in the new Codex history:
+Settings are saved in `~/.config/jevcomp/settings.json`. The variables `JEVCOMP_RESTORE_MODE`, `JEVCOMP_RESTORE_MAX_CHARS`, `JEVCOMP_PIN_RECENT_MESSAGES`, `JEVCOMP_LOSS_THRESHOLD` and `JEVCOMP_MIN_REDUCTION_RATIO` override them.
 
-- a normal message must match the same role and full text exactly;
-- a completed tool pair is considered already present only when both the exact call and exact result survive;
-- result content uses a full-content hash, not a matching prefix;
-- the post-compaction rollout must contain a modern checkpoint appended at or after the byte position captured by `PreCompact`.
+### Advanced options
 
-If the transcript is stale, missing, unsupported, or ambiguous, dedupe is disabled for that restore and `jevcomp` falls back to the previous preservation-first behavior. In other words, a failed membership check can cause duplicate context, but it must not cause retained evidence to disappear.
-
-## Restore modes
-
-The restore mode controls how much of the Jev-selected evidence is added back to Codex after native compaction. `jevcomp` disables Codex's generic hook-output spill for its two restore hooks, so these modes and `JEVCOMP_RESTORE_MAX_CHARS` are the source of truth for our evidence payload instead of being silently truncated again by Codex. The max-chars setting applies to all three modes; a mode may have a smaller internal limit.
-
-### All the text (`preserve`) — default
-
-Uses the most preservation-first reinjection: selected evidence is restored up to the global cap. To stop one enormous tool result from crowding out everything else, an individual very large result is represented by a bounded head+tail excerpt in the injected payload; the full retained normalized archive always stays on disk and its path is included.
-
-Use this when continuity/exact details matter more than minimizing the extra context added after compaction.
-
-### Part of the text (`balanced`)
-
-Injects a compact index plus a bounded evidence excerpt. The full retained normalized archive stays on disk.
-
-This reduces the context added by `jevcomp` while still giving Codex some exact evidence immediately.
-
-### Only the list (`minimal`)
-
-Injects only the compact index and file pointers. The full retained normalized archive stays on disk.
-
-This minimizes `jevcomp`'s own post-compaction payload, but Codex receives less selected evidence automatically.
-
-Legacy values `full`, `hybrid` and `index` are still accepted as aliases for `preserve`, `balanced` and `minimal`.
-
-## Options most users may care about
-
-Run `jevcomp settings` (plugin: ask Codex to change a jevcomp setting). It opens a menu: arrow keys pick a setting, Left/Right or Enter changes it, and each change is saved right away. The defaults suit most people.
-
-| Setting | Default | Plain meaning | If you increase it |
-| --- | ---: | --- | --- |
-| **How much text to send to Codex** (`restore-mode`) | `preserve` | How much selected evidence is put back after compaction. | This is a named mode, not a number: `balanced` and `minimal` inject less. |
-| **Limit on text sent to Codex** (`restore-max-chars`) | `60000` | Hard character cap for the evidence payload in **every** restore mode, before the recovery header/path. `0` disables this global cap; mode-specific limits and the per-result anti-crowding safeguard still apply. | More selected old evidence can return to the model. |
-| **Recent messages never cut** (`pin-recent-messages`) | `6` | Newest normalized messages Jev is not allowed to prune. | Safer/more conservative; less history becomes removable. |
-| **How much to cut** (`loss-threshold`) | `0.5` | Maximum Jev loss-risk accepted for removing/shortening evidence. The action only happens when its risk is **below** this value. | More aggressive pruning because a higher estimated loss risk is tolerated. |
-| **Only act if it cuts at least** (`min-reduction-ratio`) | `0.15` | Minimum measured character reduction required before a retained sidecar is used. | Requires a larger reduction before jevcomp adds anything back. |
-
-`loss-threshold` is deliberately named around what Jev answers: **risk of losing still-needed information**. If you are unsure, leave it at `0.5`; the dashboard exposes the actual decision scores.
-
-Saved settings live under `~/.config/jevcomp/settings.json`. Environment variables still override saved settings for automation and compatibility: `JEVCOMP_RESTORE_MODE`, `JEVCOMP_RESTORE_MAX_CHARS`, `JEVCOMP_PIN_RECENT_MESSAGES`, `JEVCOMP_LOSS_THRESHOLD`, and `JEVCOMP_MIN_REDUCTION_RATIO`. Legacy aliases, including the old `JEV_COMPACT_*` names, remain accepted.
-
-## Advanced options
-
-These are operational limits. They exist for unusual workloads, provider limits and debugging; changing them is normally unnecessary.
+Rarely needed; set them as environment variables.
 
 | Option | Default | What it controls |
 | --- | ---: | --- |
-| `JEVCOMP_CONCURRENCY` | `4` | Maximum Jev requests simultaneously in flight. |
-| `JEVCOMP_INDEX_MAX_CHARS` | `12000` | Maximum compact-index size used by `balanced`/`minimal`. |
-| `JEVCOMP_MAX_STATE_TOKENS` | `24000` | Internal estimated budget for conversation state shown to Jev. |
-| `JEVCOMP_MAX_REQUEST_TOKENS` | `30000` | Internal estimated budget for state + questions per Jev request. |
-| `JEVCOMP_TRUNCATE_HEAD_CHARS` | `300` | Result prefix retained for **Shorten**. |
-| `JEVCOMP_TIMEOUT_MS` | `20000` | Timeout for one Jev provider request. |
-| `JEVCOMP_RETRIES` | `1` | Retries after transient provider/network failures. |
-| `JEVCOMP_RESTORE_TTL_MS` | `86400000` | How long a completed compaction may wait for its one-shot restore. |
-| `JEVCOMP_STATE_MAX_AGE_MS` | `172800000` | Age at which stale per-session sidecars are removed. |
-| `JEVCOMP_GOAL` | automatic | Optional explicit task text supplied to Jev instead of deriving it from recent user prompts. |
+| `JEVCOMP_CONCURRENCY` | `4` | Jev requests at the same time. |
+| `JEVCOMP_INDEX_MAX_CHARS` | `12000` | Size of the list used by `balanced` and `minimal`. |
+| `JEVCOMP_MAX_STATE_TOKENS` | `24000` | Size of the conversation copy shown to Jev. |
+| `JEVCOMP_MAX_REQUEST_TOKENS` | `30000` | Size of one Jev request. |
+| `JEVCOMP_TRUNCATE_HEAD_CHARS` | `300` | Characters kept when an output is shortened. |
+| `JEVCOMP_TIMEOUT_MS` | `20000` | Time limit for one Jev request. |
+| `JEVCOMP_RETRIES` | `1` | Retries after a network failure. |
+| `JEVCOMP_RESTORE_TTL_MS` | `86400000` | Codex only. How long a compaction waits to add its details back. |
+| `JEVCOMP_STATE_MAX_AGE_MS` | `172800000` | Age at which leftover session files are deleted. |
+| `JEVCOMP_GOAL` | automatic | Task description given to Jev instead of your recent messages. |
+| `JEVCOMP_DATA_DIR` | `~/.jevcomp` | Where history and session files go. |
 
-Provider endpoint/model overrides (`JEV_MODEL`, `JEV_BASE_URL`, `OPENROUTER_JEV_MODEL`, `OPENROUTER_JEV_URL`, `OPENROUTER_HTTP_REFERER`) are intended for provider/development overrides, not normal tuning.
+`JEV_MODEL`, `JEV_BASE_URL`, `OPENROUTER_JEV_MODEL`, `OPENROUTER_JEV_URL` and `OPENROUTER_HTTP_REFERER` change the Jev endpoint, for development.
 
-## Provider configuration
+### API key
 
-`jevcomp install` saves the provider and key (run it again to change them). Settings are saved in the same folder, so Codex opened from the desktop does not depend on terminal startup files.
+`jevcomp install` (or `Configure jevcomp with ...` in Codex) saves the provider and key in `~/.config/jevcomp`; run it again to change them. `OPENROUTER_API_KEY` or `TYPESAFE_API_KEY` in the environment take precedence, with `JEVCOMP_PROVIDER` to pick one. A key can also come from a file: `OPENROUTER_API_KEY_FILE`, `TYPESAFE_API_KEY_FILE` or `JEVCOMP_KEY_FILE`.
 
-Environment variables are also supported and override saved configuration:
+## How it works
 
-```bash
-export TYPESAFE_API_KEY="..."
-```
+For each finished command, Jev answers two questions: would removing the command and its output lose something still needed, and would shortening the output. The answer becomes **Keep**, **Shorten** (the first characters plus a note) or **Remove** (the command can be run again). Your messages and Codex's instructions are never removed. Common secret patterns are hidden before anything goes to Jev, but not every possible secret can be recognised.
 
-or:
+**Codex** does not let a hook replace its summary, so jevcomp works around it:
 
-```bash
-export OPENROUTER_API_KEY="..."
-export JEVCOMP_PROVIDER=openrouter
-```
+1. Before compaction (`PreCompact`), Jev picks what is worth keeping.
+2. Codex compacts normally, and `PostCompact` confirms it.
+3. When the session resumes (`SessionStart`, or the next prompt as a fallback), jevcomp adds back only the selected text that is not already in the new history word for word.
 
-Key-file overrides are supported through `TYPESAFE_API_KEY_FILE`, `OPENROUTER_API_KEY_FILE`, or `JEVCOMP_KEY_FILE` when the provider is selected by environment or by the saved `install` preference.
+**Claude Code** lets a plugin replace the compaction itself (an early-access feature called function hooks), so there jevcomp hands back the conversation with Jev's cuts instead of a summary.
 
-## Manual inspection
+jevcomp does not judge content it cannot read (images, audio, encrypted agent messages): then the agent compacts normally. In Codex, the experimental token-budget reset also goes through jevcomp; turn jevcomp off for that if you want a completely clean context.
 
-Preview what Jev would retain from a Codex rollout without modifying Codex:
+To preview what Jev would keep from a Codex rollout without changing anything: `jevcomp compact rollout.jsonl --context retained.txt --json retained.json`.
 
-```bash
-jevcomp compact rollout.jsonl \
-  --context retained.txt \
-  --json retained.json
-```
+## Data
 
-The command writes the retained context/JSON and prints compaction statistics to stderr.
-
-## What it deliberately does not do
-
-- It does **not** replace Codex's native compaction request in hook mode.
-- It does **not** invent exact Codex token/billing savings from character counts.
-- It does **not** select user/developer/system text for deletion.
-- Its post-compaction dedupe does **not** use semantic similarity. Anything not proven present verbatim is preserved for reinjection.
-- It does **not** semantically judge context it cannot safely read. Encrypted agent content, image/audio content and unsupported history shapes fail open to native Codex behavior.
-- It does **not** need the dashboard to record metrics; they are always saved locally.
-
-Codex's experimental token-budget context reset also emits the standard compact-hook lifecycle. `jevcomp` therefore preserves selected evidence around that reset as well. If your reason for enabling token-budget mode is specifically to force a completely clean context with no old retained evidence, disable `jevcomp` for that workflow.
-
-## Data files
-
-Data directory precedence:
-
-```text
-JEVCOMP_DATA_DIR
-→ ~/.jevcomp
-```
-
-Codex and Claude Code share this folder. History left by versions before 0.7.0 in the Codex folders (`~/.codex/jevcomp` and the Codex plugin data folder) is still read.
-
-Each active session can have:
-
-- state metadata;
-- a full retained normalized `.context.txt` archive;
-- structured retained `.messages.json`;
-- local `history.jsonl` observability data.
-
-Old per-session sidecars are cleaned up automatically. History is retained for dashboard/statistics use. `install` keeps its stable compiled runtime under `~/.codex/jevcomp/runtime` (or under `CODEX_HOME` when set) unless `JEVCOMP_RUNTIME_DIR` overrides it.
+Everything is in `~/.jevcomp` (or `JEVCOMP_DATA_DIR`): `history.jsonl` for the dashboard, and per-session files that are deleted after two days. History from versions before 0.7.0, in `~/.codex/jevcomp` and the Codex plugin data folder, is still read. An npm install for Codex also keeps a copy of the program in `~/.codex/jevcomp/runtime` (or `JEVCOMP_RUNTIME_DIR`).
 
 ## Development
 
@@ -305,17 +178,15 @@ Old per-session sidecars are cleaned up automatically. History is retained for d
 npm run check
 ```
 
-Runtime code has no third-party npm dependencies. `dist/` is committed so a downloaded/cloned release can run `install` without building first.
-
-The test suite uses fake/local Jev transports and does not require paid network calls.
+No third-party runtime dependencies. `dist/` is committed so the plugins run without a build. Tests use a fake Jev and make no paid requests.
 
 ## Credits
 
-Independent implementation informed by the MIT-licensed:
+Independent implementation informed by these MIT-licensed projects:
 
 - `IAmUnbounded/save-token-jev-clean`
 - `leonaaardob/fast-dev-compaction`
-- `tamaratran/fast-jevcompion`
-- `fatelei/jevcomp` (post-compaction membership/backfill idea)
+- `tamaratran/fast-jev-compaction`
+- `fatelei/jevcomp` (post-compaction membership check)
 
-See `AUDIT.md` for the detailed behavior comparison and Codex compatibility notes.
+`AUDIT.md` has the detailed comparison and compatibility notes.
