@@ -33,6 +33,8 @@ export interface HistoryRow {
   trigger?: string;
   model?: string;
   provider?: string;
+  /** Absent on rows written before Claude Code support, which all came from Codex. */
+  host?: 'codex' | 'claude';
   phase?: 'precompact' | 'postcompact' | 'restore';
   status: 'prepared' | 'ready' | 'restored' | 'skipped' | 'failed';
   stats?: CompactStats;
@@ -54,8 +56,9 @@ export interface HistoryRow {
 
 function safe(value: string): string { return value.replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 180); }
 
+/** One folder for every agent, so the Codex and Claude Code plugins share history and the dashboard. */
 export function dataDir(env = process.env): string {
-  return env.PLUGIN_DATA ?? env.JEVCOMP_DATA_DIR ?? enabledPluginDataDir(env) ?? join(env.CODEX_HOME ?? join(homedir(), '.codex'), 'jevcomp');
+  return env.JEVCOMP_DATA_DIR ?? join(homedir(), '.jevcomp');
 }
 export function statePath(sessionId: string, env = process.env): string { return join(dataDir(env), 'sessions', `${safe(sessionId)}.json`); }
 export function contextPath(sessionId: string, env = process.env): string { return join(dataDir(env), 'sessions', `${safe(sessionId)}.context.txt`); }
@@ -65,8 +68,10 @@ export function historyPath(env = process.env): string { return join(dataDir(env
 export function readableHistoryPaths(env = process.env): string[] {
   const current = historyPath(env);
   if (env.JEVCOMP_DATA_DIR) return [current];
+  // Versions before 0.7.0 kept data in the Codex folders.
   const standalone = join(env.CODEX_HOME ?? join(homedir(), '.codex'), 'jevcomp', 'history.jsonl');
-  return [...new Set([...legacyHistoryPaths(env), standalone, current])];
+  const pluginData = [env.PLUGIN_DATA, enabledPluginDataDir(env)].filter((dir): dir is string => !!dir).map((dir) => join(dir, 'history.jsonl'));
+  return [...new Set([...legacyHistoryPaths(env), standalone, ...pluginData, current])];
 }
 
 async function ensurePrivateDir(path: string): Promise<void> {

@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LEGACY_DASHBOARD_SERVICE } from './legacy.js';
 import { dataDir } from './store.js';
+import { VERSION } from './version.js';
 export const DEFAULT_DASHBOARD_PORT = 43127;
 const DASHBOARD_SERVICES = ['jevcomp-dashboard', LEGACY_DASHBOARD_SERVICE];
 const defaultCliPath = fileURLToPath(new URL('./cli.js', import.meta.url));
@@ -50,7 +51,7 @@ export async function runningDashboard(port, env = process.env) {
             return undefined;
         const health = await response.json();
         return DASHBOARD_SERVICES.includes(health.service) && health.pid === instance.pid && health.instanceId === instance.instanceId
-            ? { ...instance, entry: typeof health.entry === 'string' ? health.entry : undefined } : undefined;
+            ? { ...instance, entry: typeof health.entry === 'string' ? health.entry : undefined, version: typeof health.version === 'string' ? health.version : undefined } : undefined;
     }
     catch {
         return undefined;
@@ -61,7 +62,9 @@ async function untrackedDashboard(port) {
     const url = `http://127.0.0.1:${port}/`;
     try {
         const health = await (await fetch(new URL('/api/health', url), { signal: AbortSignal.timeout(1000) })).json();
-        return DASHBOARD_SERVICES.includes(health.service) && Number.isSafeInteger(health.pid) ? { pid: health.pid, url } : undefined;
+        return DASHBOARD_SERVICES.includes(health.service) && Number.isSafeInteger(health.pid)
+            ? { pid: health.pid, url, entry: typeof health.entry === 'string' ? health.entry : undefined, version: typeof health.version === 'string' ? health.version : undefined }
+            : undefined;
     }
     catch {
         return undefined;
@@ -152,10 +155,25 @@ function samePath(left, right) {
     const normalize = (path) => (process.platform === 'win32' ? resolve(path).toLowerCase() : resolve(path));
     return normalize(left) === normalize(right);
 }
-/** Reuses a healthy dashboard, replacing one left running by another installed version. */
+function olderThanOurs(version) {
+    if (!version)
+        return true;
+    const parts = (value) => value.split('.').map(Number);
+    const [theirs, ours] = [parts(version), parts(VERSION)];
+    for (let i = 0; i < Math.max(theirs.length, ours.length); i++) {
+        const difference = (theirs[i] ?? 0) - (ours[i] ?? 0);
+        if (difference)
+            return difference < 0;
+    }
+    return false;
+}
+/** Reuses a healthy dashboard, replacing one left running by an older installed version. */
 export async function ensureDashboard(port, env = process.env, cliPath = defaultCliPath) {
-    const running = await runningDashboard(port, env);
-    if (running?.entry && samePath(running.entry, cliPath))
+    // The Codex and Claude Code plugins each start their own copy, so any of ours at least this new serves both.
+    const running = await runningDashboard(port, env) ?? await untrackedDashboard(port);
+    if (running && ((running.entry && samePath(running.entry, cliPath)) || !olderThanOurs(running.version)))
         return running.url;
-    return running ? restartDashboard(port, env, cliPath) : spawnDashboard(port, env, cliPath);
+    if (running)
+        await stopProcess(running, port);
+    return spawnDashboard(port, env, cliPath);
 }

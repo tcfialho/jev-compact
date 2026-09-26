@@ -254,8 +254,72 @@ async function dashboardNotice(env, options) {
         return `jevcomp dashboard unavailable: ${error instanceof Error ? error.message : String(error)}`;
     }
 }
+/** Jev settings shared by the Codex hooks and the dashboard's compaction for Claude Code. */
+export function jevCompactOptions(env) {
+    const provider = resolveProvider({ provider: requestedProvider(env), env });
+    const transport = providerConfig({ provider, env });
+    const settings = userSettings(env);
+    return {
+        provider,
+        env,
+        model: transport.model,
+        goal: env.JEVCOMP_GOAL,
+        baseUrl: transport.baseUrl,
+        lossThreshold: settings.lossThreshold,
+        preserveRecentMessages: settings.pinRecentMessages,
+        maxStateTokens: Math.max(1_000, num(env, 'JEVCOMP_MAX_STATE_TOKENS', 24_000)),
+        maxRequestTokens: Math.max(2_000, num(env, 'JEVCOMP_MAX_REQUEST_TOKENS', 30_000)),
+        truncateHeadChars: Math.max(0, num(env, 'JEVCOMP_TRUNCATE_HEAD_CHARS', 300)),
+        maxConcurrentRequests: Math.max(1, num(env, 'JEVCOMP_CONCURRENCY', 4)),
+        timeoutMs: Math.max(1, num(env, 'JEVCOMP_TIMEOUT_MS', 20_000)),
+        retries: Math.max(0, num(env, 'JEVCOMP_RETRIES', 1)),
+    };
+}
+const FUNCTION_HOOKS_FLAG = 'CLAUDE_CODE_ENABLE_FUNCTION_HOOKS';
+/** Plugins cannot set environment variables, and Claude Code reads this one only at startup, from the user's settings. */
+export async function enableFunctionHooks(env) {
+    const path = join(env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude'), 'settings.json');
+    try {
+        let settings = {};
+        try {
+            settings = JSON.parse(await readFile(path, 'utf8'));
+        }
+        catch (error) {
+            if (!(error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT'))
+                throw error;
+        }
+        if (!settings || typeof settings !== 'object' || Array.isArray(settings))
+            throw new Error('not a JSON object');
+        const current = settings.env && typeof settings.env === 'object' && !Array.isArray(settings.env) ? settings.env : {};
+        if (current[FUNCTION_HOOKS_FLAG] !== '1') {
+            await mkdir(dirname(path), { recursive: true });
+            await writeFile(path, `${JSON.stringify({ ...settings, env: { ...current, [FUNCTION_HOOKS_FLAG]: '1' } }, null, 2)}\n`);
+        }
+        return `jevcomp turned on Claude Code function hooks in ${path}. Restart Claude Code to start using jevcomp.`;
+    }
+    catch {
+        return `jevcomp is off: add "${FUNCTION_HOOKS_FLAG}": "1" under "env" in ${path} and restart Claude Code.`;
+    }
+}
+async function claudeHook(input, env, options) {
+    if (input.hook_event_name !== 'SessionStart' || (input.source !== 'startup' && input.source !== 'resume'))
+        return { continue: true, suppressOutput: true };
+    const notices = [];
+    if (env[FUNCTION_HOOKS_FLAG] !== '1')
+        notices.push(await enableFunctionHooks(env));
+    // Claude Code exports the plugin's own key option to hook processes; the dashboard gets it from the module instead.
+    if (!env.CLAUDE_PLUGIN_OPTION_APIKEY && !resolveApiKey(resolveProvider({ provider: requestedProvider(env), env }), { env }))
+        notices.push('jevcomp needs an API key: set OPENROUTER_API_KEY or TYPESAFE_API_KEY, or fill it in the plugin options.');
+    const dashboard = await dashboardNotice(env, options);
+    if (dashboard)
+        notices.push(dashboard);
+    return notices.length ? { continue: true, systemMessage: notices.join(' · ') } : { continue: true, suppressOutput: true };
+}
 export async function handleHook(value, env = process.env, options = {}) {
     const input = parseInput(value);
+    // Claude Code compacts through the plugin's function hook; its command hooks only start the dashboard.
+    if (env.CLAUDE_PLUGIN_ROOT && !env.PLUGIN_ROOT)
+        return claudeHook(input, env, options);
     if (options.startDashboard)
         await recordHookActivity(input.hook_event_name, env).catch(() => { });
     const migration = await migrateLegacyHooks(input, env);
@@ -292,25 +356,10 @@ export async function handleHook(value, env = process.env, options = {}) {
                 await tryAppendHistory({ at: new Date().toISOString(), runId, sessionId: input.session_id, turnId: input.turn_id, trigger: input.trigger, model: input.model, provider: providerName(env), phase: 'precompact', status: 'skipped', detail: 'transcript has fewer than 2 messages' }, env);
                 return { continue: true, suppressOutput: true };
             }
-            const provider = resolveProvider({ provider: requestedProvider(env), env });
-            const transport = providerConfig({ provider, env });
-            const settings = userSettings(env);
-            const result = await compactMessages(messages, {
-                provider,
-                env,
-                model: transport.model,
-                goal: env.JEVCOMP_GOAL,
-                baseUrl: transport.baseUrl,
-                lossThreshold: settings.lossThreshold,
-                preserveRecentMessages: settings.pinRecentMessages,
-                maxStateTokens: Math.max(1_000, num(env, 'JEVCOMP_MAX_STATE_TOKENS', 24_000)),
-                maxRequestTokens: Math.max(2_000, num(env, 'JEVCOMP_MAX_REQUEST_TOKENS', 30_000)),
-                truncateHeadChars: Math.max(0, num(env, 'JEVCOMP_TRUNCATE_HEAD_CHARS', 300)),
-                maxConcurrentRequests: Math.max(1, num(env, 'JEVCOMP_CONCURRENCY', 4)),
-                timeoutMs: Math.max(1, num(env, 'JEVCOMP_TIMEOUT_MS', 20_000)),
-                retries: Math.max(0, num(env, 'JEVCOMP_RETRIES', 1)),
-            });
-            const minimum = settings.minReductionRatio;
+            const jev = jevCompactOptions(env);
+            const provider = jev.provider;
+            const result = await compactMessages(messages, jev);
+            const minimum = userSettings(env).minReductionRatio;
             if (reductionRatio(result) < minimum) {
                 await tryAppendHistory({ at: new Date().toISOString(), runId, sessionId: input.session_id, turnId: input.turn_id, trigger: input.trigger, model: input.model, provider, phase: 'precompact', status: 'skipped', stats: result.stats, decisions: result.decisions, detail: `reduction below ${minimum}` }, env);
                 return { continue: true, suppressOutput: true };

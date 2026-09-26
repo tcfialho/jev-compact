@@ -1,0 +1,24 @@
+{
+  "name": "jevcomp",
+  "version": "0.7.0",
+  "description": "Jev decides what Claude Code keeps when it compacts, instead of a model-written summary.",
+  "author": { "name": "jevcomp contributors" },
+  "homepage": "https://github.com/jevcomp/jevcomp",
+  "repository": "https://github.com/jevcomp/jevcomp",
+  "license": "MIT",
+  "userConfig": {
+    "provider": {
+      "type": "string",
+      "title": "Jev provider",
+      "description": "Where the API key below comes from. Only used when you fill in the key.",
+      "options": ["openrouter", "typesafe"],
+      "default": "openrouter"
+    },
+    "apiKey": {
+      "type": "string",
+      "title": "API key",
+      "description": "Key for that provider. Leave empty to use OPENROUTER_API_KEY or TYPESAFE_API_KEY.",
+      "sensitive": true
+    }
+  }
+}

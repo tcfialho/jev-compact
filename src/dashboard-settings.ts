@@ -24,10 +24,14 @@ export interface SettingsSnapshot {
 }
 
 async function pluginHookCount(pluginRoot: string): Promise<number> {
-  try {
-    const manifest = JSON.parse(await readFile(join(pluginRoot, 'hooks', 'hooks.json'), 'utf8'));
-    return Object.keys(manifest.hooks ?? {}).length;
-  } catch { return 0; }
+  // Versions before Claude Code support kept the Codex hooks in hooks.json.
+  for (const file of ['codex.json', 'hooks.json']) {
+    try {
+      const manifest = JSON.parse(await readFile(join(pluginRoot, 'hooks', file), 'utf8'));
+      return Object.keys(manifest.hooks ?? {}).length;
+    } catch {}
+  }
+  return 0;
 }
 
 export async function settingsSnapshot(env: Env = process.env): Promise<SettingsSnapshot> {

@@ -17,9 +17,13 @@ When the user asks to check jevcomp, answer in plain words: whether the key is s
 
 When the user asks where the dashboard is, run `doctor --json` and give `dashboardUrl`. When it is empty, run `dashboard` from the installed CLI path to start it, then give the address it prints.
 
-When the user asks to uninstall jevcomp, run `uninstall` from the installed CLI path and show its output: it stops the dashboard and removes the plugin and its marketplace, and lists the folders it kept.
+When the user asks to uninstall jevcomp, run `uninstall codex` from the installed CLI path and show its output: it removes the plugin and its marketplace, stops the dashboard unless Claude Code still uses jevcomp, and lists the folders it kept. Run plain `uninstall` only when the user asks to remove jevcomp from Claude Code too.
 
 If the key is missing or the user wants to change it, use `install openrouter` or `install typesafe` from that installed CLI path (plain `install` asks). Ask which provider only when the user has not specified one. `install` also removes older standalone jevcomp hooks. Give the exact local command and have the user enter the key in the terminal's masked prompt; never ask for the key in chat. Plugin setup keeps hook management inside Codex. Recheck `doctor --json` and `/hooks` afterward. In plugin mode, `hooksInstalled` describes only standalone user hooks; `pluginRoot` identifies the plugin package.
+
+## Claude Code
+
+In Claude Code the plugin folder is `~/.claude/plugins/cache/jevcomp/jevcomp/<version>`; run `dist/cli.js doctor --json` from it for the key and the dashboard address. Compaction there runs through the function hook in `hooks/claude.js`, which needs `"CLAUDE_CODE_ENABLE_FUNCTION_HOOKS": "1"` under `env` in `~/.claude/settings.json`; the plugin adds it at the first session start, and Claude Code must then be restarted once. To uninstall, run `dist/cli.js uninstall claude` from that folder; plain `uninstall` also removes jevcomp from Codex.
 
 ## Lifecycle
 
@@ -36,7 +40,7 @@ Do not claim that hook mode rewrites the native Codex compaction request. It pre
 - `node "<installedPath>/dist/cli.js" install openrouter` (OpenRouter)
 - `node "<installedPath>/dist/cli.js" install typesafe` (TypeSafe)
 - `node "<installedPath>/dist/cli.js" doctor`
-- `node "<installedPath>/dist/cli.js" uninstall` (keeps the key, settings and history)
+- `node "<installedPath>/dist/cli.js" uninstall codex` (keeps the key, settings and history; plain `uninstall` also removes it from Claude Code)
 - `node "<installedPath>/dist/cli.js" settings`
 - `node "<installedPath>/dist/cli.js" settings restore-mode balanced`
 - `node "<installedPath>/dist/cli.js" dashboard` (restarts it; the plugin already starts it at `http://127.0.0.1:43127/` with each Codex session)

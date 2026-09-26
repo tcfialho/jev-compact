@@ -253,3 +253,21 @@ Measuring without restoring paid for Jev on every compaction and gave nothing ba
 ## Long-conversation state fitting checked — 2026-09-25
 
 In long conversations the Jev state reaches the `old calls compacted` stage, where each old call is one line with no result text. Measured on the real 1,058,326-character run of 2026-09-25 (301 calls, 299 dropped): re-asking Jev about 15 and then 40 sampled dropped calls with their result previews visible (`full` and `inputs<=200` stages) raised drop risk by about 0.05–0.15, and none crossed the 0.5 threshold. Every decision stayed the same, so per-request states that show each judged result are not worth their cost. Old reads, patches and polling are dropped because they can be reread or rerun, not because Jev cannot see them.
+
+## Claude Code support checked — 2026-09-26
+
+Measured with Claude Code 2.1.283 and a manual `/compact` on a small probe session (hooks logging each event and copying the transcript):
+
+- `PreCompact` saw the complete transcript, including the last answer.
+- `SessionStart(source=compact)` fired before `PostCompact`, and before the compaction summary was written to the transcript.
+- After compaction the model gets a structured summary that keeps exact values, file lines and every user message, ends by pointing to the full transcript path, and is followed by the recently read files re-attached in full.
+
+Claude Code already recovers what jevcomp restores in Codex, so porting the Codex restore flow adds little. The value there is different: Claude Code 2.1.283 ships an early-access function-hook surface (`CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`, event `session.compact`) that lets a plugin return the kept messages instead of the model-written summary. `tamaratran/fast-jev-compaction` uses it. That replaces the expensive summarization call (US$0.37 for a 42k-token manual `/compact` in this probe) with Jev requests.
+
+## 0.7.0 Claude Code support — 2026-09-26
+
+- `hooks/hooks.json` is now the Claude Code file: a function-hook module (`hooks/claude.js`) plus a `SessionStart` command that starts the dashboard. The Codex hooks moved to `hooks/codex.json`, named by `.codex-plugin/plugin.json`, because Claude Code always loads `hooks/hooks.json` and Codex loads the manifest path instead of it.
+- A function-hook module runs without Node (`$` may only be passed to top-level functions), so `hooks/claude.js` runs `node dist/cli.js claude-compact` through `$.process.run`, passing the transcript on stdin. That process runs the same Jev code, settings, key lookup and history as Codex and answers which calls to drop or shorten. Compaction does not depend on the dashboard running, or on its version.
+- `precompute` compactions are skipped so Claude Code does not prepare a model-written summary in the background.
+- Codex and Claude Code each start their own copy of the dashboard; a running one at the same or a newer version is reused instead of replaced.
+- Verified with Claude Code 2.1.283 and `--plugin-dir`: a manual `/compact` went from 47,690 to 7,408 tokens in 550 ms with no summary request.

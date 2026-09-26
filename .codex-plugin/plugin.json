@@ -1,6 +1,6 @@
 {
   "name": "jevcomp",
-  "version": "0.6.19",
+  "version": "0.7.0",
   "description": "Jev-guided Codex compaction that restores exact details the summary lost.",
   "author": {
     "name": "jevcomp contributors"
@@ -16,6 +16,7 @@
     "context"
   ],
   "skills": "./skills/",
+  "hooks": "./hooks/codex.json",
   "interface": {
     "displayName": "jevcomp",
     "shortDescription": "Restore only useful evidence missing after Codex compaction.",

@@ -10,9 +10,11 @@ jevcomp works alongside Codex:
 
 Your own messages are never removed. If anything goes wrong, Codex simply compacts as it normally would.
 
+jevcomp also works in Claude Code, where it replaces the summary instead: Jev cuts old command outputs and the rest of the conversation is kept word for word (see [Option 3](#option-3-claude-code-plugin)).
+
 Good to know:
 
-- It does **not** make compaction itself use fewer tokens. It adds back a limited amount of text (60,000 characters at most by default) so Codex loses less and redoes less work.
+- In Codex it does **not** make compaction itself use fewer tokens. It adds back a limited amount of text (60,000 characters at most by default) so Codex loses less and redoes less work.
 - Each compaction may make a few small paid Jev requests, billed to your OpenRouter or TypeSafe key.
 - The dashboard, a page in your browser at http://127.0.0.1:43127/, shows what it actually did in your sessions.
 
@@ -21,9 +23,10 @@ Good to know:
 You need:
 
 - **Node.js 20 or newer**, free from [nodejs.org](https://nodejs.org).
+- **Git**, which Codex and Claude Code use to download plugins.
 - An **API key** (a password-like code) from [OpenRouter](https://openrouter.ai/keys) or TypeSafe.
 
-Pick **one** of the two ways below.
+Pick **one** of the three ways below. npm sets up Codex, Claude Code or both; the plugins set up one each, and you can have both.
 
 Used the old name `jev-compact`? Install `jevcomp` the same way. Your saved key, settings, history and old hooks are picked up automatically; then remove the old plugin with `codex plugin remove jev-compact@jev-compact`.
 
@@ -41,34 +44,63 @@ Then, in Codex:
 1. Ask: `Configure jevcomp with OpenRouter` (or `with TypeSafe`) and paste the key where the terminal asks for it.
 2. Type `/hooks` and approve the four jevcomp hooks.
 
-### Option 2: npm (also gives you the `jevcomp` terminal command)
+Updating from a version before 0.7.0? Approve the four hooks in `/hooks` again: their file changed, and Codex asks again for a changed file.
+
+### Option 2: npm, for Codex, Claude Code or both (also gives you the `jevcomp` terminal command)
 
 ```bash
 npm install -g --install-links github:jevcomp/jevcomp
 jevcomp install
 ```
 
-`install` asks for OpenRouter or TypeSafe and your key. Then restart Codex, type `/hooks` and approve the four hooks. Run `jevcomp install` again anytime to change the provider or key.
+`install` asks where to install (Codex, Claude Code or both), then OpenRouter or TypeSafe and your key. To skip the questions: `jevcomp install openrouter claude` (or `codex`, or `all`).
+
+- Codex: restart Codex, type `/hooks` and approve the four hooks.
+- Claude Code: `install` adds the Claude Code plugin and turns on its function hooks (see Option 3); restart Claude Code.
+
+Run `jevcomp install` again anytime to change the provider or key.
 
 Keep `--install-links`: without it, current npm versions install a broken link.
+
+### Option 3: Claude Code plugin
+
+In a terminal:
+
+```bash
+claude plugin marketplace add jevcomp/jevcomp
+claude plugin install jevcomp@jevcomp
+```
+
+Claude Code asks for the provider and key; leave the key empty if `OPENROUTER_API_KEY` or `TYPESAFE_API_KEY` is already set, or if jevcomp is already set up for Codex. The plugin uses Claude Code's early-access function hooks, which Claude Code turns on only at startup. The first time you open Claude Code after installing, jevcomp adds this to `~/.claude/settings.json` for you and asks you to restart Claude Code once:
+
+```json
+{ "env": { "CLAUDE_CODE_ENABLE_FUNCTION_HOOKS": "1" } }
+```
+
+If that file cannot be read as JSON, jevcomp leaves it alone and asks you to add the line yourself.
+
+Here jevcomp works differently from Codex: when Claude Code compacts, Jev removes or shortens old tool output and the rest of the conversation stays word for word, instead of Claude writing a summary. That skips the summary request, which reads the whole conversation. When the cut is too small, or anything fails, Claude Code writes its usual summary.
+
+Codex and Claude Code can both have jevcomp on the same computer: they share one dashboard, one set of settings and one history.
 
 ### Check that it works
 
 - npm: `jevcomp doctor`
-- Plugin: in Codex, ask `Check jevcomp`. The plugin does not add a `jevcomp` terminal command, so `jevcomp doctor` is only for npm installs.
+- Plugin: in Codex or Claude Code, ask `Check jevcomp`. The plugins do not add a `jevcomp` terminal command, so `jevcomp doctor` is only for npm installs.
 
 Either way you learn whether your key is set and the dashboard address. With the plugin, Codex also asks you to type `/hooks` and confirm the four jevcomp hooks are active.
 
-The installation worked when, after restarting Codex, it shows `jevcomp dashboard: http://127.0.0.1:43127/` as the session starts: that message comes from the jevcomp hooks, so they are running (see [Dashboard](#dashboard)).
+The installation worked when, after restarting Codex or Claude Code, it shows `jevcomp dashboard: http://127.0.0.1:43127/` as the session starts: that message comes from the jevcomp hooks, so they are running (see [Dashboard](#dashboard)).
 
 ### Uninstall
 
 - Plugin: in Codex, ask `Uninstall jevcomp`. Or, in a terminal: `codex plugin remove jevcomp@jevcomp` and `codex plugin marketplace remove jevcomp`; this way the dashboard keeps running until you restart the computer.
-- npm: `jevcomp uninstall`, then `npm uninstall -g jevcomp`.
+- npm: `jevcomp uninstall` removes jevcomp from Codex and Claude Code; `jevcomp uninstall codex` or `jevcomp uninstall claude` removes it from one only. Then `npm uninstall -g jevcomp`.
+- Claude Code: `claude plugin uninstall jevcomp@jevcomp` and `claude plugin marketplace remove jevcomp`; the dashboard keeps running until you restart the computer. The `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS` line stays in `~/.claude/settings.json`; remove it if no other plugin needs it.
 
-Both stop the dashboard and remove jevcomp from Codex. Your key, settings and history are kept, and the command prints where they are; delete those folders to erase them too.
+Asking Codex and `jevcomp uninstall` also stop the dashboard, unless the other agent still uses jevcomp. Your key, settings and history are kept, in `~/.config/jevcomp` and `~/.jevcomp`; delete those folders to erase them too.
 
-Commands below are written as `jevcomp ...`. With the plugin only, ask Codex to run them for you.
+Commands below are written as `jevcomp ...`. With a plugin only, ask Codex or Claude Code to run them for you.
 
 ## What Jev is doing
 
@@ -252,11 +284,11 @@ Codex's experimental token-budget context reset also emits the standard compact-
 Data directory precedence:
 
 ```text
-PLUGIN_DATA
-→ JEVCOMP_DATA_DIR
-→ active Codex plugin data directory (including when CLI is run from a release or npm package)
-→ CODEX_HOME/jevcomp (or ~/.codex/jevcomp)
+JEVCOMP_DATA_DIR
+→ ~/.jevcomp
 ```
+
+Codex and Claude Code share this folder. History left by versions before 0.7.0 in the Codex folders (`~/.codex/jevcomp` and the Codex plugin data folder) is still read.
 
 Each active session can have:
 

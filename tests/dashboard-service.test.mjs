@@ -22,7 +22,7 @@ test('plugin session start opens one shared dashboard and later prompts reuse it
   const env = {
     ...process.env,
     PLUGIN_ROOT: join(root, 'plugin'),
-    PLUGIN_DATA: join(root, 'data'),
+    JEVCOMP_DATA_DIR: join(root, 'data'),
     CODEX_HOME: join(root, 'codex-home'),
     JEVCOMP_CONFIG_DIR: join(root, 'config'),
     OPENROUTER_API_KEY: 'test-key',
@@ -52,6 +52,7 @@ test('a dashboard left by another installed version is replaced', async (t) => {
   const olderCli = join(root, 'older', 'dist', 'cli.js');
   await cp(fileURLToPath(new URL('../dist', import.meta.url)), dirname(olderCli), { recursive: true });
   await writeFile(join(root, 'older', 'package.json'), '{"type":"module"}');
+  await writeFile(join(dirname(olderCli), 'version.js'), "export const VERSION = '0.0.1';");
   t.after(async () => {
     const running = await runningDashboard(port, env);
     if (running) process.kill(running.pid);
@@ -62,4 +63,21 @@ test('a dashboard left by another installed version is replaced', async (t) => {
   const current = await runningDashboard(port, env);
   assert.notEqual(current.pid, older.pid);
   assert.equal(current.entry.toLowerCase(), fileURLToPath(new URL('../dist/cli.js', import.meta.url)).toLowerCase());
+});
+
+test('the same version installed for another agent reuses the running dashboard', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'jev-dashboard-shared-'));
+  const port = await freePort();
+  const env = { ...process.env, JEVCOMP_DATA_DIR: join(root, 'data') };
+  const otherCli = join(root, 'claude', 'dist', 'cli.js');
+  await cp(fileURLToPath(new URL('../dist', import.meta.url)), dirname(otherCli), { recursive: true });
+  await writeFile(join(root, 'claude', 'package.json'), '{"type":"module"}');
+  t.after(async () => {
+    const running = await runningDashboard(port, env);
+    if (running) process.kill(running.pid);
+  });
+  await restartDashboard(port, env, otherCli);
+  const first = await runningDashboard(port, env);
+  await ensureDashboard(port, env);
+  assert.equal((await runningDashboard(port, env)).pid, first.pid);
 });

@@ -9,7 +9,7 @@ import { createServer } from 'node:net';
 import { runningDashboard } from '../dist/dashboard-service.js';
 
 const pluginRoot = dirname(dirname(fileURLToPath(import.meta.url)));
-const manifest = JSON.parse(await readFile(join(pluginRoot, 'hooks', 'hooks.json'), 'utf8'));
+const manifest = JSON.parse(await readFile(join(pluginRoot, 'hooks', 'codex.json'), 'utf8'));
 const handlers = Object.values(manifest.hooks).flatMap((groups) => groups.flatMap((group) => group.hooks));
 
 async function freePort() {
@@ -51,7 +51,7 @@ test('plugin hook command runs from any working directory in every shell Codex m
     ...process.env,
     JEVCOMP_DASHBOARD_PORT: String(port),
     PLUGIN_ROOT: pluginRoot,
-    PLUGIN_DATA: join(root, 'data'),
+    JEVCOMP_DATA_DIR: join(root, 'data'),
     CODEX_HOME: join(root, 'codex-home'),
     JEVCOMP_CONFIG_DIR: join(root, 'config'),
     OPENROUTER_API_KEY: '',

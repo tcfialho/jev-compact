@@ -26,6 +26,8 @@ export interface HistoryRow {
     trigger?: string;
     model?: string;
     provider?: string;
+    /** Absent on rows written before Claude Code support, which all came from Codex. */
+    host?: 'codex' | 'claude';
     phase?: 'precompact' | 'postcompact' | 'restore';
     status: 'prepared' | 'ready' | 'restored' | 'skipped' | 'failed';
     stats?: CompactStats;
@@ -44,6 +46,7 @@ export interface HistoryRow {
     dedupedTextItems?: number;
     dedupedToolPairs?: number;
 }
+/** One folder for every agent, so the Codex and Claude Code plugins share history and the dashboard. */
 export declare function dataDir(env?: Record<string, string | undefined>): string;
 export declare function statePath(sessionId: string, env?: Record<string, string | undefined>): string;
 export declare function contextPath(sessionId: string, env?: Record<string, string | undefined>): string;

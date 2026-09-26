@@ -47,12 +47,11 @@ test('installer never overwrites an existing malformed hooks file', async () => 
   assert.equal(await readFile(file, 'utf8'), broken);
 });
 
-test('custom Codex home keeps hooks, runtime and data together', async () => {
+test('custom Codex home keeps hooks and runtime together', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jev-codex-home-'));
   const env = { CODEX_HOME: root };
   assert.equal((await inspectHooks(env)).path, join(root, 'hooks.json'));
   assert.equal(runtimeDir(env), join(root, 'jevcomp', 'runtime'));
-  assert.equal(dataDir(env), join(root, 'jevcomp'));
 });
 
 test('legacy hook removal preserves other commands in the same entry', async () => {
@@ -143,11 +142,11 @@ test('context cap is a hard cap even when smaller than the omission marker', () 
 });
 
 
-test('PLUGIN_DATA wins and stale sidecars are swept', async () => {
+test('JEVCOMP_DATA_DIR wins over the plugin folder and stale sidecars are swept', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jev-plugin-data-'));
   const other = join(root, 'other');
   const env = { PLUGIN_DATA: join(root, 'plugin'), JEVCOMP_DATA_DIR: other };
-  assert.equal(dataDir(env), env.PLUGIN_DATA);
+  assert.equal(dataDir(env), other);
   await prepareState({ sessionId: 'old', createdAt: new Date(0).toISOString(), stats, decisions: [], index: 'x' }, 'context', env);
   const old = new Date(Date.now() - 72 * 60 * 60 * 1000);
   await utimes(statePath('old', env), old, old);
@@ -376,4 +375,10 @@ test('stale post-compaction checkpoint never suppresses retained evidence', asyn
   assert.match(restored.hookSpecificOutput.additionalContext, /critical retained evidence/);
   const rows = (await readFile(join(env.JEVCOMP_DATA_DIR, 'history.jsonl'), 'utf8')).trim().split(/\n/).map(JSON.parse);
   assert.equal(rows.at(-1).membershipStatus, 'stale');
+});
+
+test('data goes to ~/.jevcomp for every agent', async () => {
+  const { homedir } = await import('node:os');
+  const root = await mkdtemp(join(tmpdir(), 'jev-datadir-'));
+  assert.equal(dataDir({ CODEX_HOME: root, PLUGIN_DATA: join(root, 'plugin') }), join(homedir(), '.jevcomp'));
 });

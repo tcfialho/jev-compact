@@ -9,13 +9,15 @@ import { resetUserSettings, setUserSetting, settingOverride, userSettings } from
 import { readHistory, readHookActivity } from './store.js';
 import { VERSION } from './version.js';
 async function pluginHookCount(pluginRoot) {
-    try {
-        const manifest = JSON.parse(await readFile(join(pluginRoot, 'hooks', 'hooks.json'), 'utf8'));
-        return Object.keys(manifest.hooks ?? {}).length;
+    // Versions before Claude Code support kept the Codex hooks in hooks.json.
+    for (const file of ['codex.json', 'hooks.json']) {
+        try {
+            const manifest = JSON.parse(await readFile(join(pluginRoot, 'hooks', file), 'utf8'));
+            return Object.keys(manifest.hooks ?? {}).length;
+        }
+        catch { }
     }
-    catch {
-        return 0;
-    }
+    return 0;
 }
 export async function settingsSnapshot(env = process.env) {
     const settings = userSettings(env);

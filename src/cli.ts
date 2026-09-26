@@ -4,10 +4,11 @@ import { execFileSync } from 'node:child_process';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { compactForClaude } from './claude-compact.js';
 import { compactMessages, reductionRatio } from './compact.js';
 import { startDashboard } from './dashboard.js';
 import { dashboardInstancePath, dashboardPort, restartDashboard, runningDashboard, stopDashboard } from './dashboard-service.js';
-import { handleHook } from './hooks.js';
+import { enableFunctionHooks, handleHook } from './hooks.js';
 import { resetUserSettings, setUserSetting, userSettings, type SettingName } from './settings.js';
 import { describeSettings, runSettingsMenu, SETTINGS_ITEMS } from './settings-menu.js';
 import { inspectHooks, installHooks, installRuntime, runtimeDir, uninstallHooks } from './install.js';
@@ -28,14 +29,65 @@ function help(): void {
   const command = pluginRoot ? `node "${join(pluginRoot, 'dist', 'cli.js')}"` : 'jevcomp';
   console.log(`jevcomp
 
-  ${command} install      Connect jevcomp to Codex: choose OpenRouter or TypeSafe and enter your key
-  ${' '.repeat(command.length)}              (run it again to change them)
+  ${command} install      Connect jevcomp to Codex, Claude Code or both: choose OpenRouter or TypeSafe
+  ${' '.repeat(command.length)}              and enter your key (run it again to change them)
+  ${' '.repeat(command.length)}              Skip the questions: install [openrouter|typesafe] [codex|claude|all]
   ${command} settings     Change how jevcomp behaves
   ${command} doctor       Check that everything works
   ${command} dashboard    Restart the dashboard
-  ${command} uninstall    Remove jevcomp from Codex (your key and history are kept)
+  ${command} uninstall    Remove jevcomp from Codex and Claude Code (your key and history are kept)
+  ${' '.repeat(command.length)}              Only one of them: uninstall codex, uninstall claude
 
-Dashboard: ${dashboardAddress()} (opens with each Codex session)`);
+Dashboard: ${dashboardAddress()} (opens with each Codex or Claude Code session)`);
+}
+
+type Agent = 'codex' | 'claude';
+const AGENT_NAMES: Record<Agent, string> = { codex: 'Codex', claude: 'Claude Code' };
+
+function hasCommand(name: string): boolean {
+  try { execFileSync(name, ['--version'], { stdio: 'ignore', timeout: 20_000, windowsHide: true }); return true; }
+  catch { return false; }
+}
+
+function agentArgs(args: readonly string[]): Agent[] | undefined {
+  if (args.includes('all') || args.includes('both')) return ['codex', 'claude'];
+  const picked = (['codex', 'claude'] as const).filter((agent) => args.includes(agent));
+  return picked.length ? picked : undefined;
+}
+
+async function chooseAgents(args: readonly string[]): Promise<Agent[]> {
+  const requested = agentArgs(args);
+  if (requested) return requested;
+  const found = (['codex', 'claude'] as const).filter(hasCommand);
+  if (!found.length) throw new Error('neither codex nor claude was found; install Codex or Claude Code first');
+  if (found.length === 1 || !interactive()) return [...found];
+  const answer = await ask('Install for: 1) Codex  2) Claude Code  3) both  [3]: ');
+  if (!answer || answer === '3') return ['codex', 'claude'];
+  if (answer === '1') return ['codex'];
+  if (answer === '2') return ['claude'];
+  throw new Error(`unknown choice: ${answer}`);
+}
+
+function claudePluginInstalled(): boolean {
+  try {
+    const plugins = JSON.parse(execFileSync('claude', ['plugin', 'list', '--json'], { encoding: 'utf8', timeout: 30_000, windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] }));
+    return Array.isArray(plugins) && plugins.some((plugin) => plugin?.id === 'jevcomp@jevcomp');
+  } catch { return false; }
+}
+
+function removeClaudePlugin(): void {
+  for (const argv of [['plugin', 'uninstall', 'jevcomp@jevcomp'], ['plugin', 'marketplace', 'remove', 'jevcomp']]) {
+    try { execFileSync('claude', argv, { stdio: 'ignore', timeout: 60_000, windowsHide: true }); } catch {}
+  }
+}
+
+/** Claude Code copies the plugin into its own cache, so this package folder is only read once. */
+async function installClaude(): Promise<void> {
+  const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+  removeClaudePlugin();
+  execFileSync('claude', ['plugin', 'marketplace', 'add', packageRoot], { stdio: 'inherit', windowsHide: true });
+  execFileSync('claude', ['plugin', 'install', 'jevcomp@jevcomp'], { stdio: ['ignore', 'inherit', 'inherit'], windowsHide: true });
+  console.log(await enableFunctionHooks(process.env));
 }
 
 function dashboardAddress(): string { return `http://127.0.0.1:${dashboardPort(process.env)}/`; }
@@ -122,9 +174,15 @@ async function saveKey(provider: Exclude<JevProvider, 'auto'>): Promise<void> {
   throw new Error(`${label} API key is required`);
 }
 
-async function install(requestedProvider: string | undefined): Promise<void> {
-  const provider = await chooseProvider(requestedProvider);
+async function install(args: readonly string[]): Promise<void> {
+  const agents = await chooseAgents(args);
+  const provider = await chooseProvider(args.find((arg) => !['codex', 'claude', 'all', 'both'].includes(arg)));
   await saveKey(provider);
+  if (agents.includes('claude')) await installClaude();
+  if (!agents.includes('codex')) {
+    console.log(`Dashboard: ${dashboardAddress()} (opens with each Claude Code session)`);
+    return;
+  }
   if (enabledPluginRoot()) {
     await uninstallHooks();
     console.log('Codex plugin detected. In Codex, type /hooks and approve the four jevcomp hooks.');
@@ -133,16 +191,28 @@ async function install(requestedProvider: string | undefined): Promise<void> {
     await installHooks(runtimeCli);
     console.log('Connected to Codex. Restart Codex, type /hooks and approve the four jevcomp hooks.');
   }
-  console.log(`Dashboard: ${dashboardAddress()} (opens with each Codex session)`);
+  console.log(`Dashboard: ${dashboardAddress()} (opens with each ${agents.map((agent) => AGENT_NAMES[agent]).join(' or ')} session)`);
 }
 
 function pluginId(pluginRoot: string): string {
   return `jevcomp@${basename(dirname(dirname(pluginRoot)))}`;
 }
 
-async function uninstall(): Promise<void> {
+async function uninstall(args: readonly string[]): Promise<void> {
+  const agents = agentArgs(args) ?? ['codex', 'claude'];
   const pluginRoot = enabledPluginRoot();
-  await stopDashboard(dashboardPort(process.env), process.env);
+  const claudeInstalled = claudePluginInstalled();
+  const codexStays = !agents.includes('codex') && (!!pluginRoot || (await inspectHooks(process.env)).installed);
+  // The dashboard serves both agents, so it keeps running while one of them still uses jevcomp.
+  if (!codexStays && !(claudeInstalled && !agents.includes('claude'))) await stopDashboard(dashboardPort(process.env), process.env);
+  if (agents.includes('claude')) {
+    if (claudeInstalled) removeClaudePlugin();
+    console.log(claudeInstalled ? 'jevcomp was removed from Claude Code.' : 'jevcomp was not installed in Claude Code.');
+  }
+  if (!agents.includes('codex')) {
+    console.log(`Kept your key and settings: ${configDir(process.env)}`);
+    return;
+  }
   await uninstallHooks();
   if (pluginRoot) {
     execFileSync('codex', ['plugin', 'remove', pluginId(pluginRoot)], { stdio: 'inherit', windowsHide: true });
@@ -178,8 +248,8 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (cmd === 'install') { await install(args[0]); return; }
-  if (cmd === 'uninstall') { await uninstall(); return; }
+  if (cmd === 'install') { await install(args); return; }
+  if (cmd === 'uninstall') { await uninstall(args); return; }
 
   if (cmd === 'doctor') {
     const value = await readiness();
@@ -190,7 +260,7 @@ async function main(): Promise<void> {
     else console.log(`${value.hooksInstalled ? 'OK' : 'MISSING'}  Codex hooks (${value.hookEvents.join(', ') || 'none'})`);
     console.log(`OK  Node ${value.node}`);
     console.log(`    Model: ${value.model}`);
-    console.log(`    Hooks: ${value.pluginRoot ? join(value.pluginRoot, 'hooks', 'hooks.json') : value.hooksFile}`);
+    console.log(`    Hooks: ${value.pluginRoot ? join(value.pluginRoot, 'hooks', 'codex.json') : value.hooksFile}`);
     console.log(`    Data:  ${value.dataDir}`);
     console.log(`    Dashboard: ${value.dashboardUrl ?? `${dashboardAddress()} (not running; starts with the next Codex session)`}`);
     console.log(`    Restore: ${value.settings.restoreMode} · max ${fmt(value.settings.restoreMaxChars)} chars`);
@@ -216,6 +286,14 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (cmd === 'claude-compact') {
+    let answer: Record<string, unknown>;
+    try { answer = await compactForClaude(JSON.parse(await stdin()), process.env); }
+    catch (error) { answer = { apply: false, reason: error instanceof Error ? error.message : String(error) }; }
+    process.stdout.write(`${JSON.stringify(answer)}
+`);
+    return;
+  }
   if (cmd === 'dashboard') {
     const requested = flag(args, '--port') ?? args.find((x) => /^\d+$/.test(x));
     const port = requested ? Number(requested) : dashboardPort(process.env);

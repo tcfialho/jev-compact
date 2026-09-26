@@ -15,6 +15,7 @@ interface RunSummary {
     trigger?: string;
     model?: string;
     provider?: string;
+    host: 'codex' | 'claude';
     status: 'prepared' | 'ready' | 'restored' | 'nothing_missing' | 'skipped' | 'too_short' | 'failed' | 'restore_failed';
     reductionRatio: number;
     charsBefore: number;
@@ -41,6 +42,7 @@ interface RunSummary {
 /** Blocks keep transcript order, oldest first, so the chart reads left to right like the conversation. */
 interface LastCompaction {
     at: string;
+    host: 'codex' | 'claude';
     status: RunSummary['status'];
     charsBefore: number;
     injectedPayloadChars: number;

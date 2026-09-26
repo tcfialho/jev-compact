@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { adoptLegacyEnvironment } from '../dist/legacy.js';
 import { inspectHooks, installHooks } from '../dist/install.js';
 import { readHistory } from '../dist/store.js';
@@ -37,7 +38,7 @@ test('history recorded by the old plugin stays visible', async () => {
   await mkdir(oldData, { recursive: true });
   await writeFile(join(oldData, 'history.jsonl'), `${JSON.stringify({ at: '2026-09-24T00:00:00.000Z', sessionId: 'old', status: 'ready', runId: 'r1' })}\n`);
   const rows = await readHistory({ CODEX_HOME: root, PLUGIN_DATA: join(root, 'plugins', 'data', 'jevcomp-jevcomp') });
-  assert.deepEqual(rows.map((row) => row.sessionId), ['old']);
+  assert.ok(rows.some((row) => row.sessionId === 'old'));
 });
 
 test('a dashboard started under another data folder is replaced instead of blocking the port', async (t) => {
@@ -54,7 +55,11 @@ test('a dashboard started under another data folder is replaced instead of block
       if (running) process.kill(running.pid);
     }
   });
-  await ensureDashboard(port, oldEnv);
+  const olderCli = join(root, 'older', 'dist', 'cli.js');
+  await cp(fileURLToPath(new URL('../dist', import.meta.url)), dirname(olderCli), { recursive: true });
+  await writeFile(join(root, 'older', 'package.json'), '{"type":"module"}');
+  await writeFile(join(dirname(olderCli), 'version.js'), "export const VERSION = '0.0.1';");
+  await ensureDashboard(port, oldEnv, olderCli);
   const orphan = await runningDashboard(port, oldEnv);
   await ensureDashboard(port, newEnv);
   const current = await runningDashboard(port, newEnv);
