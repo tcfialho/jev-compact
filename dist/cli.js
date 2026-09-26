@@ -168,8 +168,13 @@ async function uninstall() {
     const pluginRoot = enabledPluginRoot();
     await stopDashboard(dashboardPort(process.env), process.env);
     await uninstallHooks();
-    if (pluginRoot)
+    if (pluginRoot) {
         execFileSync('codex', ['plugin', 'remove', pluginId(pluginRoot)], { stdio: 'inherit', windowsHide: true });
+        const marketplace = basename(dirname(dirname(pluginRoot)));
+        // Only our own marketplace: another one may still list plugins the user wants.
+        if (marketplace === 'jevcomp')
+            execFileSync('codex', ['plugin', 'marketplace', 'remove', marketplace], { stdio: 'inherit', windowsHide: true });
+    }
     else
         await rm(runtimeDir(process.env), { recursive: true, force: true });
     console.log('jevcomp was removed from Codex.');

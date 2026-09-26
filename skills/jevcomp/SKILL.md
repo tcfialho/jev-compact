@@ -1,11 +1,11 @@
 ---
 name: jevcomp
-description: Configure jevcomp with OpenRouter or TypeSafe, check plugin readiness, give the dashboard address, and explain compaction decisions and metrics.
+description: Configure jevcomp with OpenRouter or TypeSafe, check plugin readiness, give the dashboard address, uninstall it, and explain compaction decisions and metrics.
 ---
 
 # jevcomp
 
-Use this skill when the user asks to set up an API key, check readiness, find the dashboard, or inspect compaction decisions and metrics.
+Use this skill when the user asks to set up an API key, check readiness, find the dashboard, uninstall jevcomp, or inspect compaction decisions and metrics.
 
 ## Plugin setup
 
@@ -16,6 +16,8 @@ Run `node "<installedPath>/dist/cli.js" doctor --json` first. If `apiKeyConfigur
 When the user asks to check jevcomp, answer in plain words: whether the key is set and for which provider, and the dashboard address. Use `dashboardUrl` from `doctor --json`; when it is empty, give `http://127.0.0.1:43127/` and say it starts with the next Codex session. You cannot see `/hooks`, so ask the user to type `/hooks` and confirm the four jevcomp hooks are active. Tell them the installation is complete when Codex shows the `jevcomp dashboard:` message as a session starts, because only the jevcomp hooks print it.
 
 When the user asks where the dashboard is, run `doctor --json` and give `dashboardUrl`. When it is empty, run `dashboard` from the installed CLI path to start it, then give the address it prints.
+
+When the user asks to uninstall jevcomp, run `uninstall` from the installed CLI path and show its output: it stops the dashboard and removes the plugin and its marketplace, and lists the folders it kept.
 
 If the key is missing or the user wants to change it, use `install openrouter` or `install typesafe` from that installed CLI path (plain `install` asks). Ask which provider only when the user has not specified one. `install` also removes older standalone jevcomp hooks. Give the exact local command and have the user enter the key in the terminal's masked prompt; never ask for the key in chat. Plugin setup keeps hook management inside Codex. Recheck `doctor --json` and `/hooks` afterward. In plugin mode, `hooksInstalled` describes only standalone user hooks; `pluginRoot` identifies the plugin package.
 
@@ -34,6 +36,7 @@ Do not claim that hook mode rewrites the native Codex compaction request. It pre
 - `node "<installedPath>/dist/cli.js" install openrouter` (OpenRouter)
 - `node "<installedPath>/dist/cli.js" install typesafe` (TypeSafe)
 - `node "<installedPath>/dist/cli.js" doctor`
+- `node "<installedPath>/dist/cli.js" uninstall` (keeps the key, settings and history)
 - `node "<installedPath>/dist/cli.js" settings`
 - `node "<installedPath>/dist/cli.js" settings restore-mode balanced`
 - `node "<installedPath>/dist/cli.js" dashboard` (restarts it; the plugin already starts it at `http://127.0.0.1:43127/` with each Codex session)

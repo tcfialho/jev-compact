@@ -50,8 +50,6 @@ jevcomp install
 
 `install` asks for OpenRouter or TypeSafe and your key. Then restart Codex, type `/hooks` and approve the four hooks. Run `jevcomp install` again anytime to change the provider or key.
 
-To remove it: `jevcomp uninstall` (your key and history are kept), then `npm uninstall -g jevcomp`.
-
 Keep `--install-links`: without it, current npm versions install a broken link.
 
 ### Check that it works
@@ -62,6 +60,13 @@ Keep `--install-links`: without it, current npm versions install a broken link.
 Either way you learn whether your key is set and the dashboard address. With the plugin, Codex also asks you to type `/hooks` and confirm the four jevcomp hooks are active.
 
 The installation worked when, after restarting Codex, it shows `jevcomp dashboard: http://127.0.0.1:43127/` as the session starts: that message comes from the jevcomp hooks, so they are running (see [Dashboard](#dashboard)).
+
+### Uninstall
+
+- Plugin: in Codex, ask `Uninstall jevcomp`. Or, in a terminal: `codex plugin remove jevcomp@jevcomp` and `codex plugin marketplace remove jevcomp`; this way the dashboard keeps running until you restart the computer.
+- npm: `jevcomp uninstall`, then `npm uninstall -g jevcomp`.
+
+Both stop the dashboard and remove jevcomp from Codex. Your key, settings and history are kept, and the command prints where they are; delete those folders to erase them too.
 
 Commands below are written as `jevcomp ...`. With the plugin only, ask Codex to run them for you.
 
