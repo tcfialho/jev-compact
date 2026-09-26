@@ -14,7 +14,7 @@ Good to know:
 
 - It does **not** make compaction itself use fewer tokens. It adds back a limited amount of text (60,000 characters at most by default) so Codex loses less and redoes less work.
 - Each compaction may make a few small paid Jev requests, billed to your OpenRouter or TypeSafe key.
-- The dashboard shows what it actually did in your sessions.
+- The dashboard, a page in your browser at http://127.0.0.1:43127/, shows what it actually did in your sessions.
 
 ## Install
 
@@ -112,8 +112,9 @@ If Jev fails, a key is missing, the rollout cannot be reconstructed safely, or t
 
 Open **http://127.0.0.1:43127/** in your browser. It starts by itself when a Codex session starts, and Codex shows the address. It keeps running until you restart the computer; after an update, the next Codex session switches it to the new version.
 
+- Forgot the address? `jevcomp doctor` shows it (plugin: ask Codex `Where is the jevcomp dashboard?`).
 - Restart it: `jevcomp dashboard` (plugin: ask Codex to restart the jevcomp dashboard).
-- Other port: `JEVCOMP_DASHBOARD_PORT=43200`.
+- Port: `43127` by default. To use another, set `JEVCOMP_DASHBOARD_PORT`, for example `JEVCOMP_DASHBOARD_PORT=43200`.
 
 The dashboard shows values that `jevcomp` can actually measure:
 
